@@ -1,0 +1,9 @@
+{
+  "name": "okimochi-board",
+  "private": true,
+  "workspaces": ["frontend"],
+  "scripts": {
+    "build": "npm run build -w frontend",
+    "test": "npm run test -w frontend"
+  }
+}

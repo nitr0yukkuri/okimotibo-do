@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: okimochi-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /healthz
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ALLOW_ANONYMOUS
+        value: "false"
+      - key: STATUS_TTL
+        value: "15m"

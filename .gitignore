@@ -1,0 +1,10 @@
+node_modules/
+.cache/
+frontend/dev/
+dist/
+coverage/
+.env
+.env.local
+*.exe
+*.test
+.DS_Store
