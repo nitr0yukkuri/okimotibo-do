@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import "./App.css";
+import { useStateRecognition } from "./use-state-recognition";
+import type { RecognitionResult } from "./types";
 
 type Mood = "busy" | "available" | "neutral";
 
@@ -16,9 +18,30 @@ const moodLabel: Record<Mood, string> = {
 };
 
 export function App() {
-  const [selectedMood, setSelectedMood] = useState<Mood>("available");
-  const [autoRead, setAutoRead] = useState(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [cameraTesting, setCameraTesting] = useState(false);
+  const [clientId] = useState(() => crypto.randomUUID());
+  const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
+    ? {
+        url: import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8080/api/v1/ws",
+        token: import.meta.env.VITE_SUPABASE_ACCESS_TOKEN,
+        roomId: import.meta.env.VITE_ROOM_ID,
+        clientId,
+      }
+    : undefined;
+
+  const updateFromHand = (result: RecognitionResult) => {
+    if (result.source === "hand" && result.status !== "unknown") {
+      setSelectedMood(result.status);
+    }
+  };
+
+  useStateRecognition(videoRef, {
+    enabled: cameraTesting,
+    socket,
+    onRecognition: updateFromHand,
+  });
 
   return (
     <main className="board" aria-label="おきもちぼ〜ど">
@@ -57,16 +80,8 @@ export function App() {
 
         <footer className="board-footer">
           <div className="auto-read">
-            <label className="toggle-row">
-              <span>表情読み取りでステータス更新</span>
-              <input
-                type="checkbox"
-                checked={autoRead}
-                onChange={(event) => setAutoRead(event.target.checked)}
-              />
-            </label>
-            <p>※この機能はベータ版であり、</p>
-            <p>本来の意図と異なる動作をする可能性があります。</p>
+            <p className="toggle-row">手のジェスチャーでステータス更新</p>
+            <p>※手の形が確定したときだけ更新します。</p>
           </div>
 
           <button
@@ -74,10 +89,11 @@ export function App() {
             type="button"
             onClick={() => setCameraTesting((current) => !current)}
           >
-            カメラテスト
+            {cameraTesting ? "カメラ停止" : "カメラテスト"}
           </button>
         </footer>
       </div>
+      <video ref={videoRef} hidden muted playsInline />
     </main>
   );
 }

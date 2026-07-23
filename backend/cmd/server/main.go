@@ -13,10 +13,15 @@ import (
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/api"
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/config"
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/store"
+	"github.com/joho/godotenv"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		logger.Error("failed to load .env", "error", err)
+		os.Exit(1)
+	}
 	cfg, err := config.FromEnv()
 	if err != nil {
 		logger.Error("invalid configuration", "error", err)

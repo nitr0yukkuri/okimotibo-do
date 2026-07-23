@@ -1,12 +1,14 @@
 import { useEffect, useRef } from "react";
 import { attachCamera, stopCamera } from "./camera";
 import { MediaPipeStateRecognizer, type RecognizerOptions } from "./recognizer";
+import type { RecognitionResult } from "./types";
 import { StateSocket, type StateSocketOptions } from "./websocket-client";
 
 export interface UseStateRecognitionOptions {
   enabled?: boolean;
   recognizer?: RecognizerOptions;
-  socket: StateSocketOptions;
+  socket?: StateSocketOptions;
+  onRecognition?: (result: RecognitionResult) => void;
 }
 
 export function useStateRecognition(
@@ -20,7 +22,7 @@ export function useStateRecognition(
     if (optionsRef.current.enabled === false || !videoRef.current) return;
     const video = videoRef.current;
     const recognizer = new MediaPipeStateRecognizer(optionsRef.current.recognizer);
-    const socket = new StateSocket(optionsRef.current.socket);
+    const socket = optionsRef.current.socket ? new StateSocket(optionsRef.current.socket) : undefined;
     let stream: MediaStream | undefined;
     let animationFrame = 0;
     let cancelled = false;
@@ -33,10 +35,13 @@ export function useStateRecognition(
         recognizer.close();
         return;
       }
-      socket.connect();
+      socket?.connect();
       const loop = (timestamp: number) => {
         const result = recognizer.recognize(video, timestamp);
-        if (result) socket.sendRecognition(result);
+        if (result) {
+          optionsRef.current.onRecognition?.(result);
+          socket?.sendRecognition(result);
+        }
         animationFrame = requestAnimationFrame(loop);
       };
       animationFrame = requestAnimationFrame(loop);
@@ -46,7 +51,7 @@ export function useStateRecognition(
     return () => {
       cancelled = true;
       cancelAnimationFrame(animationFrame);
-      socket.close();
+      socket?.close();
       recognizer.close();
       stopCamera(stream);
     };
@@ -58,11 +63,11 @@ export function useStateRecognition(
     options.recognizer?.inferenceIntervalMs,
     options.recognizer?.minConfidence,
     options.recognizer?.wasmRoot,
-    options.socket.clientId,
-    options.socket.reconnectMaxMs,
-    options.socket.roomId,
-    options.socket.token,
-    options.socket.url,
-    options.socket.userId,
+    options.socket?.clientId,
+    options.socket?.reconnectMaxMs,
+    options.socket?.roomId,
+    options.socket?.token,
+    options.socket?.url,
+    options.socket?.userId,
   ]);
 }
