@@ -4,15 +4,15 @@ import "./App.css";
 type Mood = "busy" | "available" | "neutral";
 
 const moodOptions: Array<{ id: Mood; label: string }> = [
-  { id: "busy", label: "したくない" },
   { id: "available", label: "したい" },
   { id: "neutral", label: "いいよ" },
+  { id: "busy", label: "したくない" },
 ];
 
 const moodLabel: Record<Mood, string> = {
-  busy: "したくない",
   available: "したい",
   neutral: "いいよ",
+  busy: "したくない",
 };
 
 export function App() {
