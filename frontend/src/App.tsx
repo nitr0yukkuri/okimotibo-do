@@ -20,6 +20,7 @@ const moodLabel: Record<Mood, string> = {
 export function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
+  const [autoRead, setAutoRead] = useState(true);
   const [cameraTesting, setCameraTesting] = useState(false);
   const [clientId] = useState(() => crypto.randomUUID());
   const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
@@ -80,8 +81,16 @@ export function App() {
 
         <footer className="board-footer">
           <div className="auto-read">
-            <p className="toggle-row">手のジェスチャーでステータス更新</p>
-            <p>※手の形が確定したときだけ更新します。</p>
+            <label className="toggle-row">
+              <span>表情読み取りでステータス更新</span>
+              <input
+                type="checkbox"
+                checked={autoRead}
+                onChange={(event) => setAutoRead(event.target.checked)}
+              />
+            </label>
+            <p>※この機能はベータ版であり、</p>
+            <p>本来の意図と異なる動作をする可能性があります。</p>
           </div>
 
           <button
