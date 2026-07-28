@@ -57,3 +57,37 @@
   margin: 0;
   font-weight: bold;
 }
+
+.status-controls {
+  position: absolute;
+  bottom: 40px;
+  display: flex;
+  gap: 12px;
+}
+
+.status-btn {
+  padding: 12px 20px;
+  border: 2px solid transparent;
+  border-radius: 20px;
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #333;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.status-btn:active {
+  transform: scale(0.95);
+}
+
+.btn-available { background-color: #94f89b; }
+.btn-neutral { background-color: #ffe98d; }
+.btn-busy { background-color: #ff9390; }
+
+.theme-available .btn-available,
+.theme-neutral .btn-neutral,
+.theme-busy .btn-busy {
+  border-color: #333;
+  transform: scale(1.05);
+}

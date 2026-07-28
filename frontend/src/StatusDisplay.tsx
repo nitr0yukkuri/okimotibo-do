@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import "./StatusDisplay.css";
 
 type Mood = "busy" | "available" | "neutral";
@@ -7,7 +7,9 @@ interface StatusDisplayProps {
   mood: Mood;
 }
 
-export function StatusDisplay({ mood }: StatusDisplayProps) {
+export function StatusDisplay({ mood: initialMood }: StatusDisplayProps) {
+  const [mood, setMood] = useState<Mood>(initialMood);
+
   const content = {
     busy: {
       icon: (
@@ -48,6 +50,12 @@ export function StatusDisplay({ mood }: StatusDisplayProps) {
       <div className="status-text">
         <h1>{current.title}</h1>
         <p>{current.subtitle}</p>
+      </div>
+
+      <div className="status-controls">
+        <button className="status-btn btn-available" onClick={() => setMood("available")}>したい</button>
+        <button className="status-btn btn-neutral" onClick={() => setMood("neutral")}>いいよ</button>
+        <button className="status-btn btn-busy" onClick={() => setMood("busy")}>したくない</button>
       </div>
     </div>
   );
