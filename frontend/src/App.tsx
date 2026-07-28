@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import "./App.css";
+import { useStateRecognition } from "./use-state-recognition";
+import type { RecognitionResult } from "./types";
 
 type Mood = "busy" | "available" | "neutral";
 
@@ -16,9 +18,31 @@ const moodLabel: Record<Mood, string> = {
 };
 
 export function App() {
-  const [selectedMood, setSelectedMood] = useState<Mood>("available");
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [autoRead, setAutoRead] = useState(true);
   const [cameraTesting, setCameraTesting] = useState(false);
+  const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+  const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
+    ? {
+        url: import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8080/api/v1/ws",
+        token: import.meta.env.VITE_SUPABASE_ACCESS_TOKEN,
+        roomId: import.meta.env.VITE_ROOM_ID,
+        clientId,
+      }
+    : undefined;
+
+  const updateFromHand = (result: RecognitionResult) => {
+    if (result.source === "hand" && result.status !== "unknown") {
+      setSelectedMood(result.status);
+    }
+  };
+
+  useStateRecognition(videoRef, {
+    enabled: cameraTesting,
+    socket,
+    onRecognition: updateFromHand,
+  });
 
   return (
     <main className="board" aria-label="おきもちぼ〜ど">
@@ -74,10 +98,11 @@ export function App() {
             type="button"
             onClick={() => setCameraTesting((current) => !current)}
           >
-            カメラテスト
+            {cameraTesting ? "カメラ停止" : "カメラテスト"}
           </button>
         </footer>
       </div>
+      <video ref={videoRef} hidden muted playsInline />
     </main>
   );
 }
