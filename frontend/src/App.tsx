@@ -22,7 +22,7 @@ export function App() {
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [autoRead, setAutoRead] = useState(true);
   const [cameraTesting, setCameraTesting] = useState(false);
-  const [clientId] = useState(() => crypto.randomUUID());
+  const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
   const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
     ? {
         url: import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8080/api/v1/ws",
