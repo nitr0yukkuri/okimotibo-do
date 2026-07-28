@@ -24,6 +24,7 @@ function ControlPanel() {
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [autoRead, setAutoRead] = useState(true);
   const [cameraTesting, setCameraTesting] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
   const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
     ? {
@@ -44,6 +45,9 @@ function ControlPanel() {
     enabled: cameraTesting,
     socket,
     onRecognition: updateFromHand,
+    onError: (error) => {
+      setCameraError(error instanceof Error ? error.message : "カメラを起動できませんでした。");
+    },
   });
 
   return (
@@ -79,6 +83,13 @@ function ControlPanel() {
           <div className="room-stage" aria-label={`現在の気持ち: ${moodLabel[selectedMood]}`}>
             <div className={`status-zone status-${selectedMood}`} />
           </div>
+
+          {cameraTesting && (
+            <div className="camera-preview">
+              <video ref={videoRef} muted playsInline autoPlay />
+              {cameraError && <p role="alert">{cameraError}</p>}
+            </div>
+          )}
         </section>
 
         <footer className="board-footer">
@@ -98,13 +109,15 @@ function ControlPanel() {
           <button
             className={`camera-button${cameraTesting ? " is-testing" : ""}`}
             type="button"
-            onClick={() => setCameraTesting((current) => !current)}
+            onClick={() => {
+              setCameraError(null);
+              setCameraTesting((current) => !current);
+            }}
           >
             {cameraTesting ? "カメラ停止" : "カメラテスト"}
           </button>
         </footer>
       </div>
-      <video ref={videoRef} hidden muted playsInline />
     </main>
   );
 }

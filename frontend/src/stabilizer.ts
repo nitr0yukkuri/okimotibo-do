@@ -17,7 +17,7 @@ export class TemporalStabilizer<T extends string> {
       windowSize: options.windowSize ?? 8,
       requiredMatches: options.requiredMatches ?? 6,
       minimumConfidence: options.minimumConfidence ?? 0.7,
-      missingGraceMs: options.missingGraceMs ?? 3000,
+      missingGraceMs: options.missingGraceMs ?? 1500,
     };
     if (this.options.requiredMatches > this.options.windowSize) {
       throw new Error("requiredMatches must not exceed windowSize");

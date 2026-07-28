@@ -35,22 +35,24 @@ function angle(a: Landmark, b: Landmark, c: Landmark): number {
   return Math.acos(Math.max(-1, Math.min(1, dot / Math.max(magnitude, 1e-9))));
 }
 
+// 閾値を2.3に統一: isExtended(>2.3) と isFolded(<=2.3) でグレーゾーンをなくす
 function isExtended(points: Landmark[], mcp: number, pip: number, tip: number): boolean {
-  const straight = angle(points[mcp], points[pip], points[tip]) > 2.35;
+  const straight = angle(points[mcp], points[pip], points[tip]) > 2.3;
   const palmDistance = distance(points[tip], points[WRIST]);
   return straight && palmDistance > distance(points[pip], points[WRIST]) * 1.08;
 }
 
 function isFolded(points: Landmark[], mcp: number, pip: number, tip: number): boolean {
   return (
-    angle(points[mcp], points[pip], points[tip]) < 2.15 ||
+    angle(points[mcp], points[pip], points[tip]) <= 2.3 ||
     distance(points[tip], points[WRIST]) < distance(points[pip], points[WRIST]) * 1.08
   );
 }
 
+// 親指の距離閾値を 0.62→0.68 に強化（グーでも親指が出ていると誤判定されにくくする）
 function thumbIsExtended(points: Landmark[], scale: number): boolean {
   const straight = angle(points[THUMB_MCP], points[THUMB_IP], points[THUMB_TIP]) > 2.25;
-  const awayFromPalm = distance(points[THUMB_TIP], points[INDEX_MCP]) > scale * 0.62;
+  const awayFromPalm = distance(points[THUMB_TIP], points[INDEX_MCP]) > scale * 0.68;
   return straight && awayFromPalm;
 }
 

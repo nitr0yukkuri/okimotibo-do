@@ -78,8 +78,15 @@ export class MediaPipeStateRecognizer {
     const cannedGesture = normalizeMediaPipeGesture(canned?.categoryName);
     const useCanned = cannedGesture !== "unknown" && (canned?.score ?? 0) >= this.options.minConfidence;
     const customGesture = custom.gesture === "shaka" || custom.gesture === "sideways_thumb";
-    const rawGesture = customGesture ? custom.gesture : useCanned ? cannedGesture : custom.gesture;
-    const rawConfidence = customGesture || !useCanned ? custom.confidence : (canned?.score ?? 0);
+    // MediaPipeが高確信度(>=0.82)でthumb_upと言っているのにカスタムがshakaと言った場合、
+    // 「親指UPで小指がほんの少し開いた状態」なのでthumb_upを優先する
+    const shakaOverriddenByThumbUp =
+      custom.gesture === "shaka" &&
+      cannedGesture === "thumb_up" &&
+      (canned?.score ?? 0) >= 0.82;
+    const useCustom = customGesture && !shakaOverriddenByThumbUp;
+    const rawGesture = useCustom ? custom.gesture : useCanned ? cannedGesture : custom.gesture;
+    const rawConfidence = useCustom || !useCanned ? custom.confidence : (canned?.score ?? 0);
     const stableGesture = this.stabilizer.push(rawGesture, rawConfidence, Date.now());
     if (stableGesture === "unknown") return null;
 
