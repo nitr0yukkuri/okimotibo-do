@@ -173,31 +173,6 @@ input {
   background: #ffe98d;
 }
 
-.camera-preview {
-  width: min(360px, 100%);
-  overflow: hidden;
-  border: 1.5px solid #333333;
-  border-radius: 8px;
-  background: #111111;
-}
-
-.camera-preview video {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  transform: scaleX(-1);
-}
-
-.camera-preview p {
-  margin: 0;
-  padding: 10px 12px;
-  background: #fff1f1;
-  color: #a00000;
-  font-size: 14px;
-  line-height: 1.4;
-}
-
 .board-footer {
   display: flex;
   align-items: flex-end;

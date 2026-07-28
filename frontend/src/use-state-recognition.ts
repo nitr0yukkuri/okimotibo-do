@@ -9,7 +9,6 @@ export interface UseStateRecognitionOptions {
   recognizer?: RecognizerOptions;
   socket?: StateSocketOptions;
   onRecognition?: (result: RecognitionResult) => void;
-  onError?: (error: unknown) => void;
 }
 
 export function useStateRecognition(
@@ -29,8 +28,8 @@ export function useStateRecognition(
     let cancelled = false;
 
     const start = async () => {
-      stream = await attachCamera(video);
-      await recognizer.initialize();
+      const [cameraStream] = await Promise.all([attachCamera(video), recognizer.initialize()]);
+      stream = cameraStream;
       if (cancelled) {
         stopCamera(stream);
         recognizer.close();
@@ -47,10 +46,7 @@ export function useStateRecognition(
       };
       animationFrame = requestAnimationFrame(loop);
     };
-    void start().catch((error) => {
-      optionsRef.current.onError?.(error);
-      window.dispatchEvent(new CustomEvent("recognition.error", { detail: error }));
-    });
+    void start().catch((error) => window.dispatchEvent(new CustomEvent("recognition.error", { detail: error })));
 
     return () => {
       cancelled = true;
