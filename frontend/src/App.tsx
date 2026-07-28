@@ -111,17 +111,17 @@ function ControlPanel() {
 
 // ルーティング用コンポーネント
 export function App() {
-  const [isMobile, setIsMobile] = useState<boolean | null>(null);
-
-  useEffect(() => {
+  const [isMobile, setIsMobile] = useState(() => {
     const userAgent = window.navigator.userAgent;
     const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
-    setIsMobile(mobileRegex.test(userAgent));
-  }, []);
+    return mobileRegex.test(userAgent) || window.innerWidth <= 768;
+  });
 
-  if (isMobile === null) {
-    return null;
-  }
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(window.navigator.userAgent));
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // スマホからのアクセスの場合は全画面表示コンポーネントへ
   if (isMobile) {
