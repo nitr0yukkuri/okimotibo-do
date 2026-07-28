@@ -2,11 +2,13 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-top: 4vh;
   height: 100vh;
   width: 100vw;
   text-align: center;
   transition: background-color 0.3s ease, color 0.3s ease;
+  box-sizing: border-box;
 }
 
 /* 各ステータスのテーマカラー */
@@ -15,7 +17,7 @@
   color: #333;
 }
 .theme-busy .status-icon {
-  color: #e03e3e; /* 少し濃い赤 */
+  color: #e83232; /* 少し濃い赤 */
 }
 
 .theme-available {
@@ -23,7 +25,7 @@
   color: #333;
 }
 .theme-available .status-icon {
-  color: #4cc74c; /* 少し濃い緑 */
+  color: #44df44; /* 少し濃い緑 */
 }
 
 .theme-neutral {
@@ -31,14 +33,13 @@
   color: #333;
 }
 .theme-neutral .status-icon {
-  color: #e6c229; /* 少し濃い黄色 */
+  color: #f0d121; /* 少し濃い黄色 */
 }
 
 /* アイコンとテキストのスタイル */
 .status-graphic {
-  width: 250px;
-  height: 250px;
-  margin-bottom: 2rem;
+  width: 95vw;
+  height: 95vw;
 }
 
 .status-icon {
@@ -48,12 +49,12 @@
 
 .status-text h1 {
   font-size: 3rem;
-  margin: 0 0 0.5rem 0;
+  margin: 0;
   font-weight: bold;
 }
 
 .status-text p {
-  font-size: 2rem;
+  font-size: 2.5rem;
   margin: 0;
   font-weight: bold;
 }
