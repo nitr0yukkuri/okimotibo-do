@@ -1,0 +1,59 @@
+.status-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  text-align: center;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* 各ステータスのテーマカラー */
+.theme-busy {
+  background-color: #ff9390; /* 赤 */
+  color: #333;
+}
+.theme-busy .status-icon {
+  color: #e03e3e; /* 少し濃い赤 */
+}
+
+.theme-available {
+  background-color: #94f89b; /* 緑 */
+  color: #333;
+}
+.theme-available .status-icon {
+  color: #4cc74c; /* 少し濃い緑 */
+}
+
+.theme-neutral {
+  background-color: #ffe98d; /* 黄色 */
+  color: #333;
+}
+.theme-neutral .status-icon {
+  color: #e6c229; /* 少し濃い黄色 */
+}
+
+/* アイコンとテキストのスタイル */
+.status-graphic {
+  width: 250px;
+  height: 250px;
+  margin-bottom: 2rem;
+}
+
+.status-icon {
+  width: 100%;
+  height: 100%;
+}
+
+.status-text h1 {
+  font-size: 3rem;
+  margin: 0 0 0.5rem 0;
+  font-weight: bold;
+}
+
+.status-text p {
+  font-size: 2rem;
+  margin: 0;
+  font-weight: bold;
+}

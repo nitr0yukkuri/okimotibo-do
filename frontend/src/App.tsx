@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import "./App.css";
+import { StatusDisplay } from "./StatusDisplay";
 
 type Mood = "busy" | "available" | "neutral";
 
@@ -15,7 +16,8 @@ const moodLabel: Record<Mood, string> = {
   busy: "したくない",
 };
 
-export function App() {
+// PC用操作画面
+function ControlPanel() {
   const [selectedMood, setSelectedMood] = useState<Mood>("available");
   const [autoRead, setAutoRead] = useState(true);
   const [cameraTesting, setCameraTesting] = useState(false);
@@ -80,4 +82,27 @@ export function App() {
       </div>
     </main>
   );
+}
+
+// ルーティング用コンポーネント
+export function App() {
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const userAgent = window.navigator.userAgent;
+    const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+    setIsMobile(mobileRegex.test(userAgent));
+  }, []);
+
+  if (isMobile === null) {
+    return null;
+  }
+
+  // スマホからのアクセスの場合は全画面表示コンポーネントへ
+  if (isMobile) {
+    return <StatusDisplay mood="available" />;
+  }
+
+  // PCからのアクセスの場合は操作画面へ
+  return <ControlPanel />;
 }
