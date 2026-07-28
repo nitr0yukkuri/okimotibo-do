@@ -1,7 +1,8 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import "./App.css";
 import { useStateRecognition } from "./use-state-recognition";
 import type { RecognitionResult } from "./types";
+import { StatusDisplay } from "./StatusDisplay";
 
 type Mood = "busy" | "available" | "neutral";
 
@@ -17,7 +18,8 @@ const moodLabel: Record<Mood, string> = {
   busy: "したくない",
 };
 
-export function App() {
+// PC用操作画面
+function ControlPanel() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [autoRead, setAutoRead] = useState(true);
@@ -105,4 +107,27 @@ export function App() {
       <video ref={videoRef} hidden muted playsInline />
     </main>
   );
+}
+
+// ルーティング用コンポーネント
+export function App() {
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const userAgent = window.navigator.userAgent;
+    const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+    setIsMobile(mobileRegex.test(userAgent));
+  }, []);
+
+  if (isMobile === null) {
+    return null;
+  }
+
+  // スマホからのアクセスの場合は全画面表示コンポーネントへ
+  if (isMobile) {
+    return <StatusDisplay mood="available" />;
+  }
+
+  // PCからのアクセスの場合は操作画面へ
+  return <ControlPanel />;
 }
