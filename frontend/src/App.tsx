@@ -34,16 +34,20 @@ function ControlPanel() {
       }
     : undefined;
 
-  const updateFromHand = (result: RecognitionResult) => {
-    if (result.source === "hand" && result.status !== "unknown") {
+  const updateFromRecognition = (result: RecognitionResult) => {
+    if (result.status !== "unknown") {
       setSelectedMood(result.status);
     }
   };
 
   useStateRecognition(videoRef, {
     enabled: cameraTesting,
+    emotion: {
+      url: import.meta.env.VITE_EMOTION_API_URL ?? "http://127.0.0.1:8000",
+      enabled: autoRead,
+    },
     socket,
-    onRecognition: updateFromHand,
+    onRecognition: updateFromRecognition,
   });
 
   return (

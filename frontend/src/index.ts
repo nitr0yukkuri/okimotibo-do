@@ -1,4 +1,5 @@
 export * from "./camera";
+export * from "./emotion-client";
 export * from "./face-classifier";
 export * from "./gesture-classifier";
 export * from "./recognizer";
@@ -6,4 +7,3 @@ export * from "./stabilizer";
 export * from "./types";
 export * from "./use-state-recognition";
 export * from "./websocket-client";
-
