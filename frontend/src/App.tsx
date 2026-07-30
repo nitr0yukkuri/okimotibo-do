@@ -23,7 +23,7 @@ function ControlPanel() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [autoRead, setAutoRead] = useState(true);
-  const [cameraTesting, setCameraTesting] = useState(false);
+  const [cameraTesting, setCameraTesting] = useState(true);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
   const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
     ? {
@@ -105,7 +105,7 @@ function ControlPanel() {
             type="button"
             onClick={() => setCameraTesting((current) => !current)}
           >
-            {cameraTesting ? "カメラ停止" : "カメラテスト"}
+            {cameraTesting ? "Stop Camera" : "Camera Test"}
           </button>
         </footer>
       </div>
