@@ -51,12 +51,9 @@ export function StatusDisplay({ mood: initialMood }: StatusDisplayProps) {
         <h1>{current.title}</h1>
         <p>{current.subtitle}</p>
       </div>
-
-      <div className="status-controls">
-        <button className="status-btn btn-available" onClick={() => setMood("available")}>したい</button>
-        <button className="status-btn btn-neutral" onClick={() => setMood("neutral")}>いいよ</button>
-        <button className="status-btn btn-busy" onClick={() => setMood("busy")}>したくない</button>
-      </div>
+      <button className="status-logout" type="button">
+          ログアウト
+      </button>
     </div>
   );
 }
