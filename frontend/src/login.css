@@ -13,7 +13,7 @@ body{
     width: 100%;
     height: 100vh;
     background-color: #fff;
-    background-image: url("/pc_背景.png");
+    background-image: url("/pc-background.png");
     background-size: cover;
     background-position: center;  
     background-repeat: no-repeat; 
@@ -70,7 +70,7 @@ body{
 @media screen and (max-width: 768px) {
 
     .login {
-        background-image: url("/sp_背景.png");
+        background-image: url("/sp-background.png");
         background-size: contain;
         background-position: center;
         background-repeat: no-repeat;

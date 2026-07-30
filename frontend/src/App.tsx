@@ -105,7 +105,7 @@ function ControlPanel() {
             type="button"
             onClick={() => setCameraTesting((current) => !current)}
           >
-            {cameraTesting ? "Stop Camera" : "Camera Test"}
+            {cameraTesting ? "カメラ停止" : "カメラテスト"}
           </button>
         </footer>
       </div>
