@@ -1,0 +1,104 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:sans-serif;
+}
+
+body{
+    background:#f7f7f7;
+}
+
+.login {
+    width: 100%;
+    height: 100vh;
+    background-image: url(./assets/pc_背景.png);
+    background-size: cover;      
+    background-position: center;  
+    background-repeat: no-repeat; 
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.login-box{
+    text-align:center;
+    z-index:100;
+}
+
+.login-box h1{
+    margin-bottom:60px;
+    color:#333;
+    font-size:42px;
+    font-family: "Zen Maru Gothic", sans-serif;
+    font-weight: 700;
+    font-style: normal;
+}
+
+/* googleログインボタン */
+
+.google-btn{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:15px;
+    width:330px;
+    height:60px;
+    border:none;
+    border-radius:10px;
+    background:white;
+    cursor:pointer;
+    font-size:24px;
+    font-weight:bold;
+    box-shadow:0 3px 8px rgba(0,0,0,.1);
+    transition:.3s;
+}
+
+.google-btn:hover{
+
+    transform:translateY(-2px);
+
+    box-shadow:0 8px 20px rgba(0,0,0,.15);
+}
+.google-btn img{
+    width:28px;
+}
+
+
+/* ===========================
+   スマホ対応
+=========================== */
+@media screen and (max-width: 768px) {
+
+    .login {
+        background-image: url("./assets/sp_背景.png");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        padding: 20px;
+    }
+
+    .login-box {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .login-box h1 {
+        font-size: 28px;
+        margin-bottom: 40px;
+    }
+
+    .google-btn {
+        width: 280px;
+        height: 56px;
+        font-size: 20px;
+        border-radius: 8px;
+    }
+
+    .google-btn img {
+        width: 24px;
+    }
+
+}
