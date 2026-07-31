@@ -3,20 +3,8 @@ import "./App.css";
 import { useStateRecognition } from "./use-state-recognition";
 import type { RecognitionResult } from "./types";
 import { StatusDisplay } from "./StatusDisplay";
-
-type Mood = "busy" | "available" | "neutral";
-
-const moodOptions: Array<{ id: Mood; label: string }> = [
-  { id: "available", label: "したい" },
-  { id: "neutral", label: "いいよ" },
-  { id: "busy", label: "したくない" },
-];
-
-const moodLabel: Record<Mood, string> = {
-  available: "したい",
-  neutral: "いいよ",
-  busy: "したくない",
-};
+import { StatusPictureInPicture } from "./StatusPictureInPicture";
+import { moodLabel, moodOptions, type Mood } from "./mood";
 
 // PC用操作画面
 function ControlPanel() {
@@ -109,29 +97,11 @@ function ControlPanel() {
         </footer>
       </div>
       <video ref={videoRef} hidden muted playsInline />
+      <StatusPictureInPicture mood={selectedMood} onMoodChange={setSelectedMood} />
     </main>
   );
 }
 
-// ルーティング用コンポーネント
 export function App() {
-  const [isMobile, setIsMobile] = useState(() => {
-    const userAgent = window.navigator.userAgent;
-    const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
-    return mobileRegex.test(userAgent) || window.innerWidth <= 768;
-  });
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(window.navigator.userAgent));
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  // スマホからのアクセスの場合は全画面表示コンポーネントへ
-  if (isMobile) {
-    return <StatusDisplay mood="available" />;
-  }
-
-  // PCからのアクセスの場合は操作画面へ
   return <ControlPanel />;
 }

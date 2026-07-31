@@ -255,6 +255,126 @@ input {
   color: #0076b3;
 }
 
+.mini-status-host {
+  --mini-status-width: 280px;
+  --mini-status-collapsed-height: 48px;
+  --mini-status-expanded-height: 260px;
+  position: fixed;
+  right: 28px;
+  top: 110px;
+  z-index: 20;
+  width: var(--mini-status-width);
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14);
+}
+
+.pip-open-button {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.mini-status {
+  --mini-status-width: 280px;
+  --mini-status-collapsed-height: 48px;
+  --mini-status-expanded-height: 260px;
+  width: min(100vw, var(--mini-status-width));
+  height: var(--mini-status-collapsed-height);
+  overflow: hidden;
+  background: #ffffff;
+  color: #232323;
+}
+
+.mini-status.is-expanded {
+  display: grid;
+  width: min(100vw, var(--mini-status-width));
+  height: min(100vh, var(--mini-status-expanded-height));
+  grid-template-rows: auto auto 1fr;
+  align-content: start;
+  row-gap: 12px;
+  justify-items: center;
+  padding: 14px 10px 10px;
+}
+
+.mini-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+  padding: 0 16px;
+  border: 0;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.mini-arrow {
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border: solid #111111;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mini-arrow-right {
+  border-width: 0 3px 3px 0;
+  transform: rotate(-45deg);
+}
+
+.mini-arrow-up {
+  justify-self: start;
+  width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  margin-bottom: 10px;
+  border-width: 3px 0 0 3px;
+  transform: rotate(-135deg);
+}
+
+.mini-dot {
+  width: 35px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+
+.mini-mood-controls {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: -10px;
+}
+
+.mini-mood-button {
+  width: 80px;
+  height: 40px;
+  border: 0;
+  border-radius: 12px;
+  color: #232323;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.mini-mood-button[aria-pressed="true"] {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 15px rgba(44, 66, 48, 0.14);
+  filter: saturate(1.08);
+}
+
+.mini-status-card {
+  align-self: start;
+  width: 138px;
+  aspect-ratio: 1;
+  border-radius: 22px;
+}
+
 @media (max-width: 700px) {
   .board {
     grid-template-rows: 76px 1fr;
@@ -329,5 +449,9 @@ input {
     width: 172px;
     min-height: 54px;
     font-size: 19px;
+  }
+
+  .mini-status-host {
+    display: none;
   }
 }
