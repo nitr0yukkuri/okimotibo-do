@@ -23,7 +23,7 @@ function ControlPanel() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [autoRead, setAutoRead] = useState(true);
-  const [cameraTesting, setCameraTesting] = useState(false);
+  const [cameraTesting, setCameraTesting] = useState(true);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
   const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
     ? {
@@ -34,16 +34,19 @@ function ControlPanel() {
       }
     : undefined;
 
-  const updateFromHand = (result: RecognitionResult) => {
-    if (result.source === "hand" && result.status !== "unknown") {
+  const updateFromRecognition = (result: RecognitionResult) => {
+    if (result.status !== "unknown") {
       setSelectedMood(result.status);
     }
   };
 
   useStateRecognition(videoRef, {
     enabled: cameraTesting,
+    face: {
+      enabled: autoRead,
+    },
     socket,
-    onRecognition: updateFromHand,
+    onRecognition: updateFromRecognition,
   });
 
   return (

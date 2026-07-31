@@ -1,4 +1,4 @@
-import { StrictMode, useState } from 'react'
+import React, { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import Login from './login.jsx' 
