@@ -1,5 +1,6 @@
 export * from "./camera";
 export * from "./emotion-client";
+export * from "./mediapipe-face-recognizer";
 export * from "./face-classifier";
 export * from "./gesture-classifier";
 export * from "./recognizer";

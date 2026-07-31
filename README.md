@@ -48,6 +48,17 @@ npm run build
 npm test
 ```
 
+### ローカル起動
+
+リポジトリ直下で次を実行すると、フロントエンドを開発モードで起動できます。
+
+```powershell
+cd C:\src\okimotibo-do\2026-Team-02
+npm run dev
+```
+
+通常は`http://localhost:5173/`で開きます。5173番ポートが使用中の場合は、ターミナルに表示された`Local`のURLを開いてください。終了するときは`Ctrl+C`を押します。
+
 React側では表示用の`video`要素へのrefを渡します。ライブラリ自身はUIを描画しません。
 
 ```tsx
@@ -112,13 +123,26 @@ Secret keyをReactへ含めてはいけません。Reactが使うのはSupabase�
 
 Py-Feat v2の学習済みモデルは研究・非商用利用向けです。Python 3.11を使用します。
 
+### 初回セットアップ
+
 ```powershell
+cd C:\src\okimotibo-do\2026-Team-02
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r emotion-api\requirements.txt
-cd emotion-api
-uvicorn app:app --reload --port 8000
 ```
+
+### 2回目以降の起動
+
+リポジトリ直下で次を実行します。Py-Featはデモ用なので、利用するときだけ起動します。
+
+```powershell
+cd C:\src\okimotibo-do\2026-Team-02
+$env:ALLOWED_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,http://localhost:5176,http://127.0.0.1:5176"
+.\.venv\Scripts\python.exe -m uvicorn app:app --app-dir emotion-api --host 127.0.0.1 --port 8000
+```
+
+起動後、`http://127.0.0.1:8000/healthz`を開いて応答を確認できます。終了するときは起動したターミナルで`Ctrl+C`を押します。
 
 Pythonを直接入れずDockerで起動する場合:
 

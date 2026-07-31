@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { attachCamera, stopCamera } from "./camera";
 import { EmotionApiClient, type EmotionApiOptions } from "./emotion-client";
+import { MediaPipeFaceRecognizer, type MediaPipeFaceOptions } from "./mediapipe-face-recognizer";
 import { MediaPipeStateRecognizer, type RecognizerOptions } from "./recognizer";
 import type { RecognitionResult } from "./types";
 import { StateSocket, type StateSocketOptions } from "./websocket-client";
@@ -8,6 +9,7 @@ import { StateSocket, type StateSocketOptions } from "./websocket-client";
 export interface UseStateRecognitionOptions {
   enabled?: boolean;
   recognizer?: RecognizerOptions;
+  face?: MediaPipeFaceOptions;
   emotion?: EmotionApiOptions;
   socket?: StateSocketOptions;
   onRecognition?: (result: RecognitionResult) => void;
@@ -24,6 +26,7 @@ export function useStateRecognition(
     if (optionsRef.current.enabled === false || !videoRef.current) return;
     const video = videoRef.current;
     const recognizer = new MediaPipeStateRecognizer(optionsRef.current.recognizer);
+    const face = optionsRef.current.face ? new MediaPipeFaceRecognizer(optionsRef.current.face) : undefined;
     const emotion = optionsRef.current.emotion ? new EmotionApiClient(optionsRef.current.emotion) : undefined;
     const socket = optionsRef.current.socket ? new StateSocket(optionsRef.current.socket) : undefined;
     let stream: MediaStream | undefined;
@@ -33,7 +36,11 @@ export function useStateRecognition(
     let emotionErrorReported = false;
 
     const start = async () => {
-      const [cameraStream] = await Promise.all([attachCamera(video), recognizer.initialize()]);
+      const [cameraStream] = await Promise.all([
+        attachCamera(video),
+        recognizer.initialize(),
+        face?.initialize(),
+      ]);
       stream = cameraStream;
       if (cancelled) {
         stopCamera(stream);
@@ -47,6 +54,14 @@ export function useStateRecognition(
           lastHandAt = Date.now();
           optionsRef.current.onRecognition?.(result);
           socket?.sendRecognition(result);
+        }
+        if (face && optionsRef.current.face?.enabled !== false) {
+          const faceResult = face.recognize(video, timestamp);
+          const handPriorityMs = 3_000;
+          if (faceResult && Date.now() - lastHandAt >= handPriorityMs) {
+            optionsRef.current.onRecognition?.(faceResult);
+            socket?.sendRecognition(faceResult);
+          }
         }
         if (emotion && optionsRef.current.emotion?.enabled !== false) {
           void emotion.recognize(video, timestamp).then((faceResult) => {
@@ -73,6 +88,7 @@ export function useStateRecognition(
       cancelAnimationFrame(animationFrame);
       socket?.close();
       recognizer.close();
+      face?.close();
       emotion?.reset();
       stopCamera(stream);
     };
@@ -84,6 +100,13 @@ export function useStateRecognition(
     options.recognizer?.inferenceIntervalMs,
     options.recognizer?.minConfidence,
     options.recognizer?.wasmRoot,
+    options.face?.delegate,
+    options.face?.faceModelUrl,
+    options.face?.inferenceIntervalMs,
+    options.face?.lockMs,
+    options.face?.minConfidence,
+    options.face?.smileHoldMs,
+    options.face?.wasmRoot,
     options.emotion?.inferenceIntervalMs,
     options.emotion?.requestTimeoutMs,
     options.emotion?.requiredMatches,

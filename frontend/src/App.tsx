@@ -42,8 +42,7 @@ function ControlPanel() {
 
   useStateRecognition(videoRef, {
     enabled: cameraTesting,
-    emotion: {
-      url: import.meta.env.VITE_EMOTION_API_URL ?? "http://127.0.0.1:8000",
+    face: {
       enabled: autoRead,
     },
     socket,
