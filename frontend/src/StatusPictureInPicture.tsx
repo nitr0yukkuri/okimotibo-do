@@ -93,7 +93,10 @@ export function StatusPictureInPicture({ mood, onMoodChange }: StatusPictureInPi
 
     const handleClose = () => setPipWindow(null);
     pipWindow.addEventListener("pagehide", handleClose);
-    return () => pipWindow.removeEventListener("pagehide", handleClose);
+    return () => {
+      pipWindow.removeEventListener("pagehide", handleClose);
+      if (!pipWindow.closed) pipWindow.close();
+    };
   }, [pipWindow]);
 
   const openPictureInPicture = async () => {
@@ -101,9 +104,19 @@ export function StatusPictureInPicture({ mood, onMoodChange }: StatusPictureInPi
       return;
     }
 
-    const nextWindow =
-      window.documentPictureInPicture.window ??
-      (await window.documentPictureInPicture.requestWindow({ width: pipWidth, height: pipCollapsedHeight }));
+    const existingWindow = pipWindow && !pipWindow.closed
+      ? pipWindow
+      : window.documentPictureInPicture.window;
+    if (existingWindow && !existingWindow.closed) {
+      if (existingWindow !== pipWindow) setPipWindow(existingWindow);
+      existingWindow.focus();
+      return;
+    }
+
+    const nextWindow = await window.documentPictureInPicture.requestWindow({
+      width: pipWidth,
+      height: pipCollapsedHeight,
+    });
 
     nextWindow.document.body.innerHTML = "";
     nextWindow.document.title = "おきもちミニ表示";
