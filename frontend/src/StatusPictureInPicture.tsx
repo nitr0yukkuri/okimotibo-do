@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import { createPortal } from "react-dom";
 import { moodColor, moodLabel, moodOptions, type Mood } from "./mood";
 
@@ -78,11 +78,13 @@ function MiniStatusPanel({ mood, onMoodChange, onExpandedChange, variant = "laun
 }
 
 interface StatusPictureInPictureProps {
+  enabled: boolean;
   mood: Mood;
+  onEnabledChange: (enabled: boolean) => void;
   onMoodChange: (mood: Mood) => void;
 }
 
-export function StatusPictureInPicture({ mood, onMoodChange }: StatusPictureInPictureProps) {
+export function StatusPictureInPicture({ enabled, mood, onEnabledChange, onMoodChange }: StatusPictureInPictureProps) {
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
   const [isSupported] = useState(() => Boolean(window.documentPictureInPicture));
 
@@ -91,13 +93,23 @@ export function StatusPictureInPicture({ mood, onMoodChange }: StatusPictureInPi
       return;
     }
 
-    const handleClose = () => setPipWindow(null);
+    const handleClose = () => {
+      setPipWindow(null);
+      onEnabledChange(false);
+    };
     pipWindow.addEventListener("pagehide", handleClose);
     return () => {
       pipWindow.removeEventListener("pagehide", handleClose);
       if (!pipWindow.closed) pipWindow.close();
     };
-  }, [pipWindow]);
+  }, [onEnabledChange, pipWindow]);
+
+  useEffect(() => {
+    if (!enabled && pipWindow && !pipWindow.closed) {
+      pipWindow.close();
+      setPipWindow(null);
+    }
+  }, [enabled, pipWindow]);
 
   const openPictureInPicture = async () => {
     if (!window.documentPictureInPicture) {
@@ -110,6 +122,7 @@ export function StatusPictureInPicture({ mood, onMoodChange }: StatusPictureInPi
     if (existingWindow && !existingWindow.closed) {
       if (existingWindow !== pipWindow) setPipWindow(existingWindow);
       existingWindow.focus();
+      onEnabledChange(true);
       return;
     }
 
@@ -117,6 +130,12 @@ export function StatusPictureInPicture({ mood, onMoodChange }: StatusPictureInPi
       width: pipWidth,
       height: pipCollapsedHeight,
     });
+
+    try {
+      nextWindow.moveTo(window.screen.availWidth - pipWidth, 0);
+    } catch {
+      // Some browsers decide Picture-in-Picture placement themselves.
+    }
 
     nextWindow.document.body.innerHTML = "";
     nextWindow.document.title = "おきもちミニ表示";
@@ -156,27 +175,26 @@ export function StatusPictureInPicture({ mood, onMoodChange }: StatusPictureInPi
     root.id = "pip-root";
     nextWindow.document.body.appendChild(root);
     setPipWindow(nextWindow);
+    onEnabledChange(true);
+  };
+
+  const handleToggle = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      await openPictureInPicture();
+      return;
+    }
+
+    onEnabledChange(false);
+    pipWindow?.close();
+    setPipWindow(null);
   };
 
   return (
     <>
-      <div className="mini-status-host">
-        {isSupported ? (
-          <button
-            className="pip-open-button mini-status is-launcher"
-            type="button"
-            aria-label="常時表示ステータスを開く"
-            onClick={openPictureInPicture}
-          >
-            <span className="mini-collapsed">
-              <span className="mini-arrow mini-arrow-right" aria-hidden="true" />
-              <span className="mini-dot" style={{ backgroundColor: moodColor[mood] }} />
-            </span>
-          </button>
-        ) : (
-          <MiniStatusPanel mood={mood} onMoodChange={onMoodChange} />
-        )}
-      </div>
+      <label className="toggle-row">
+        <span>ステータスを常時画面に表示</span>
+        <input type="checkbox" checked={enabled} disabled={!isSupported} onChange={handleToggle} />
+      </label>
       {pipWindow &&
         createPortal(
           <MiniStatusPanel

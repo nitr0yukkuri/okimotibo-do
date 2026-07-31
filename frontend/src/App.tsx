@@ -10,6 +10,7 @@ import { moodLabel, moodOptions, type Mood } from "./mood";
 function ControlPanel() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
+  const [pipVisible, setPipVisible] = useState(false);
   const [autoRead, setAutoRead] = useState(true);
   const [cameraTesting, setCameraTesting] = useState(true);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -75,6 +76,12 @@ function ControlPanel() {
 
         <footer className="board-footer">
           <div className="auto-read">
+            <StatusPictureInPicture
+              enabled={pipVisible}
+              mood={selectedMood}
+              onEnabledChange={setPipVisible}
+              onMoodChange={setSelectedMood}
+            />
             <label className="toggle-row">
               <span>表情読み取りでステータス更新</span>
               <input
@@ -97,7 +104,6 @@ function ControlPanel() {
         </footer>
       </div>
       <video ref={videoRef} hidden muted playsInline />
-      <StatusPictureInPicture mood={selectedMood} onMoodChange={setSelectedMood} />
     </main>
   );
 }
