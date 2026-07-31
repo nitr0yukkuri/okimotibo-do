@@ -86,7 +86,11 @@ export class EmotionApiClient {
   }
 
   private push(status: Status): Status | null {
-    if (status === "unknown") return null;
+    if (status === "unknown") {
+      this.samples.length = 0;
+      this.stableStatus = null;
+      return null;
+    }
     const windowSize = this.options.windowSize ?? 5;
     const requiredMatches = this.options.requiredMatches ?? 3;
     this.samples.push(status);
@@ -118,7 +122,7 @@ export class EmotionApiClient {
 
   private async fetchPrediction(image: Blob): Promise<EmotionApiResponse> {
     const controller = new AbortController();
-    const timeout = globalThis.setTimeout(() => controller.abort(), this.options.requestTimeoutMs ?? 10_000);
+    const timeout = globalThis.setTimeout(() => controller.abort(), this.options.requestTimeoutMs ?? 30_000);
     try {
       const response = await fetch(`${this.options.url.replace(/\/$/, "")}/v1/emotion`, {
         method: "POST",

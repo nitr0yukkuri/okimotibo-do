@@ -1,5 +1,5 @@
 # おきもちぼーど 
-カメラから手のジェスチャーをMediaPipeで、顔の表情をPy-Feat v2で読み取り、現在の状態をGo WebSocket APIでリアルタイム配信します。
+カメラから手のジェスチャーと顔の表情をMediaPipeで読み取り、現在の状態をGo WebSocket APIでリアルタイム配信します。Py-Feat v2の表情APIはデモ用として利用できます。
 
 ## 状態の定義
 
@@ -11,7 +11,7 @@
 
 `thumb_up`と`thumb_down`はMediaPipe Gesture Recognizerの標準分類を利用します。標準分類にない`shaka`は21個の手ランドマークから指の開閉を判定します。
 
-顔は研究・非商用利用向けのPy-Feat v2で`Happy`、`Anger`を含む7表情に分類します。信頼度70%以上の`Happy`を`available`、`Anger`を`busy`へ割り当て、直近5回中3回の一致で確定します。それ以外の表情では状態を変更しません。手が検出されてから3秒間は手を優先します。最後に確定した状態は15分間有効です。表情は本人の感情を断定するものではありません。
+通常の顔認識はMediaPipe Face LandmarkerのBlendshapeを使います。笑顔または怒り寄りの表情が約2秒続いた場合に状態を変更し、変更後は4秒間固定します。それ以外の表情では状態を変更しません。手が検出されてから3秒間は手を優先します。最後に確定した状態は15分間有効です。表情は本人の感情を断定するものではありません。
 
 ## アーキテクチャ
 
@@ -19,14 +19,17 @@
 Camera
   -> React
      -> MediaPipe gesture classifier
-     -> Python / Py-Feat v2 emotion API
+     -> MediaPipe face classifier
      -> temporal stabilizer (hand priority)
   -> Go WebSocket API
      -> room broadcast
      -> Supabase Auth / Postgres
+
+Demo only:
+  React -> Python / Py-Feat v2 emotion API
 ```
 
-顔の推論中は1秒ごとに縮小JPEGをPython APIへ送ります。APIは推論用の一時ファイルを処理直後に削除し、Go APIとSupabaseには画像を送りません。
+通常のMediaPipe認識では画像をサーバーへ送りません。Py-Featのデモを有効にした場合だけ縮小JPEGをPython APIへ送り、APIは推論用の一時ファイルを処理直後に削除します。Go APIとSupabaseには画像を送りません。
 
 ## ディレクトリ
 
@@ -90,7 +93,8 @@ export function CameraRuntime() {
 - 信頼度`0.70`未満を除外
 - 直近8フレーム中6フレームの一致で確定
 - 一時的な未検出は3秒保持
-- 顔は1秒ごとに推論し、直近5回中3回の一致で確定
+- MediaPipeの顔判定は約2秒の継続で確定し、変更後は4秒間固定
+- Py-Featのデモ判定は直近5回中3回の一致で確定し、`unknown`で候補をリセット
 - 手の認識後3秒間は顔で状態を上書きしない
 - 最終状態は既定で15分保持し、継続中の手ジェスチャーは1分ごとに有効期限を延長
 - WebSocket送信は確定状態の変化時または1分ごとのheartbeatだけ

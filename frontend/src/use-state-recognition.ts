@@ -36,15 +36,28 @@ export function useStateRecognition(
     let emotionErrorReported = false;
 
     const start = async () => {
-      const [cameraStream] = await Promise.all([
-        attachCamera(video),
-        recognizer.initialize(),
-        face?.initialize(),
-      ]);
-      stream = cameraStream;
+      const cameraPromise = attachCamera(video).then((cameraStream) => {
+        stream = cameraStream;
+        if (cancelled) stopCamera(cameraStream);
+        return cameraStream;
+      });
+      try {
+        await Promise.all([
+          cameraPromise,
+          recognizer.initialize(),
+          face?.initialize(),
+        ]);
+      } catch (error) {
+        cancelled = true;
+        stopCamera(stream);
+        recognizer.close();
+        face?.close();
+        throw error;
+      }
       if (cancelled) {
         stopCamera(stream);
         recognizer.close();
+        face?.close();
         return;
       }
       socket?.connect();
