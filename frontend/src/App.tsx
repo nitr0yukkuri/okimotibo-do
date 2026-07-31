@@ -3,20 +3,8 @@ import "./App.css";
 import { useStateRecognition } from "./use-state-recognition";
 import type { RecognitionResult } from "./types";
 import { StatusDisplay } from "./StatusDisplay";
-
-type Mood = "busy" | "available" | "neutral";
-
-const moodOptions: Array<{ id: Mood; label: string }> = [
-  { id: "available", label: "したい" },
-  { id: "neutral", label: "いいよ" },
-  { id: "busy", label: "したくない" },
-];
-
-const moodLabel: Record<Mood, string> = {
-  available: "したい",
-  neutral: "いいよ",
-  busy: "したくない",
-};
+import { StatusPictureInPicture } from "./StatusPictureInPicture";
+import { moodLabel, moodOptions, type Mood } from "./mood";
 
 // PC用操作画面
 function ControlPanel() {
@@ -109,11 +97,11 @@ function ControlPanel() {
         </footer>
       </div>
       <video ref={videoRef} hidden muted playsInline />
+      <StatusPictureInPicture mood={selectedMood} onMoodChange={setSelectedMood} />
     </main>
   );
 }
 
-// ルーティング用コンポーネント
 export function App() {
   const [isMobile, setIsMobile] = useState(() => {
     const userAgent = window.navigator.userAgent;
@@ -127,11 +115,9 @@ export function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // スマホからのアクセスの場合は全画面表示コンポーネントへ
   if (isMobile) {
     return <StatusDisplay mood="available" />;
   }
 
-  // PCからのアクセスの場合は操作画面へ
   return <ControlPanel />;
 }
