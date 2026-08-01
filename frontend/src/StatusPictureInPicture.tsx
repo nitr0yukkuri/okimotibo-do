@@ -180,7 +180,11 @@ export function StatusPictureInPicture({ enabled, mood, onEnabledChange, onMoodC
 
   const handleToggle = async (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
-      await openPictureInPicture();
+      try {
+        await openPictureInPicture();
+      } catch {
+        onEnabledChange(false);
+      }
       return;
     }
 
