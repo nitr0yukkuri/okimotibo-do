@@ -255,6 +255,87 @@ input {
   color: #0076b3;
 }
 
+/* モーダルの背景（*/
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+/* モーダル本体 */
+.modal-content {
+  background-color: white;
+  padding: 30px;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 600px;
+  text-align: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  color: #333;
+}
+
+.modal-description {
+  font-size: 1em;
+  margin: 20px 0;
+}
+
+.modal-guide-container {
+  text-align: left;
+  display: inline-block;
+}
+
+.modal-guide-title {
+  color: #4CAF50;
+  margin-bottom: 5px;
+}
+
+.modal-guide-list {
+  font-size: 1em;
+  margin: 0 0 20px 0;
+  padding-left: 20px;
+}
+
+.modal-guide-note {
+  font-size: 0.8em;
+  color: #666;
+  margin-top: -15px;
+  margin-bottom: 20px;
+}
+
+.modal-status-title {
+  color: #F44336;
+  margin-bottom: 5px;
+}
+
+.modal-status-list {
+  font-size: 1em;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.status-red {
+  color: #F44336;
+  font-weight: bold;
+}
+
+.status-yellow {
+  color: #FFC107;
+  font-weight: bold;
+}
+
+.status-green {
+  color: #4CAF50;
+  font-weight: bold;
+}
+
 @media (max-width: 700px) {
   .board {
     grid-template-rows: 76px 1fr;

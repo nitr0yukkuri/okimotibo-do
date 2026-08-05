@@ -24,6 +24,7 @@ function ControlPanel() {
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [autoRead, setAutoRead] = useState(true);
   const [cameraTesting, setCameraTesting] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
   const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
     ? {
@@ -46,10 +47,21 @@ function ControlPanel() {
     onRecognition: updateFromHand,
   });
 
+  //モーダルの背景をクリックした時に閉じる処理
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      setIsHelpOpen(false);
+    }
+  };
+
   return (
     <main className="board" aria-label="おきもちぼ〜ど">
       <header className="board-header">
-        <button className="help-button" aria-label="ヘルプ">
+        <button 
+          className="help-button" 
+          aria-label="ヘルプ"
+          onClick={() => setIsHelpOpen(true)}
+        >
           ?
         </button>
         <img className="brand-logo" src="/okimochi_logo.png" alt="おきもちぼ〜ど" />
@@ -106,6 +118,35 @@ function ControlPanel() {
         </footer>
       </div>
       <video ref={videoRef} hidden muted playsInline />
+      {isHelpOpen && (
+        <div className="modal-overlay" onClick={handleOverlayClick}>
+          <div className="modal-content">
+            <h3>おきもちぼーど<br />操作方法</h3>
+            <p className="modal-description">
+              パソコンでの作業中に邪魔されたくない時や、逆に話しかけて欲しい時に簡単に意思表示できるシステムです！
+            </p>
+            
+            <div className="modal-guide-container">
+              <h4 className="modal-guide-title">使い方</h4>
+              <ol className="modal-guide-list">
+                <li>PCとスマホで同じアカウントにログインする</li>
+                <li>スマホを周囲から見える位置に置く</li>
+                <li>PCカメラにハンドサインをすると、スマホの表示が変わります！</li>
+              </ol>
+              <p className="modal-guide-note">
+                ※正しく動作されない場合、PC画面からの直接操作も可能です
+              </p>
+
+              <h4 className="modal-status-title">ステータス一覧</h4>
+              <ul className="modal-status-list">
+                <li><span className="status-red">・作業中</span>  集中したい時    👎</li>
+                <li><span className="status-yellow">・対応可能</span> 用事があれば応えられる時 ハンドサイン</li>
+                <li><span className="status-green">・暇</span>    おしゃべりしたい時 👍</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
