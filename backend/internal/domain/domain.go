@@ -30,9 +30,10 @@ type Face struct {
 type Source string
 
 const (
-	SourceHand Source = "hand"
-	SourceFace Source = "face"
-	SourceNone Source = "none"
+	SourceHand   Source = "hand"
+	SourceFace   Source = "face"
+	SourceNone   Source = "none"
+	SourceManual Source = "manual"
 )
 
 type State struct {
@@ -115,6 +116,13 @@ func (s State) validateSource() error {
 	case SourceNone:
 		if s.Status != StatusUnknown {
 			return errors.New("none source requires unknown status")
+		}
+	case SourceManual:
+		if s.Status != StatusAvailable && s.Status != StatusNeutral && s.Status != StatusBusy {
+			return errors.New("manual source requires an explicit status")
+		}
+		if s.Hand != nil || s.Face != nil {
+			return errors.New("manual source must not include hand or face data")
 		}
 	default:
 		return errors.New("invalid recognition source")

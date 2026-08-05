@@ -5,23 +5,24 @@ import type { RecognitionResult } from "./types";
 import { StatusDisplay } from "./StatusDisplay";
 import { StatusPictureInPicture } from "./StatusPictureInPicture";
 import { moodLabel, moodOptions, type Mood } from "./mood";
+import { useStatusSync, type StatusSyncOptions } from "./use-status-sync";
 
 // PC用操作画面
-function ControlPanel() {
+function ControlPanel({ sync }: { sync?: StatusSyncOptions }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [pipVisible, setPipVisible] = useState(false);
   const [autoRead, setAutoRead] = useState(true);
   const [cameraTesting, setCameraTesting] = useState(true);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-  const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
-    ? {
-        url: import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8080/api/v1/ws",
-        token: import.meta.env.VITE_SUPABASE_ACCESS_TOKEN,
-        roomId: import.meta.env.VITE_ROOM_ID,
-        clientId,
-      }
-    : undefined;
+  // カメラ検出専用のソケット。cameraTestingがfalseの間は接続しない。
+  const cameraSocket = sync ? { ...sync, clientId } : undefined;
+  // カメラのON/OFFに関わらず常時つながる同期用ソケット。他端末からの変更もここで受け取る。
+  const { status: syncedMood, sendManual } = useStatusSync(sync);
+
+  useEffect(() => {
+    setSelectedMood(syncedMood);
+  }, [syncedMood]);
 
   const updateFromRecognition = (result: RecognitionResult) => {
     if (result.status !== "unknown") {
@@ -29,12 +30,18 @@ function ControlPanel() {
     }
   };
 
+  // ボタン操作は画面表示をすぐ切り替えつつ、サーバーにも送って他端末へ配信する。
+  const handleManualMoodChange = (mood: Mood) => {
+    setSelectedMood(mood);
+    sendManual(mood);
+  };
+
   useStateRecognition(videoRef, {
     enabled: cameraTesting,
     face: {
       enabled: autoRead,
     },
-    socket,
+    socket: cameraSocket,
     onRecognition: updateFromRecognition,
   });
 
@@ -61,7 +68,7 @@ function ControlPanel() {
                 type="button"
                 aria-pressed={selectedMood === option.id}
                 key={option.id}
-                onClick={() => setSelectedMood(option.id)}
+                onClick={() => handleManualMoodChange(option.id)}
               >
                 {option.label}
               </button>
@@ -80,7 +87,7 @@ function ControlPanel() {
               enabled={pipVisible}
               mood={selectedMood}
               onEnabledChange={setPipVisible}
-              onMoodChange={setSelectedMood}
+              onMoodChange={handleManualMoodChange}
             />
             <label className="toggle-row">
               <span>表情読み取りでステータス更新</span>
@@ -121,9 +128,24 @@ export function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // PC・スマホの両画面で同じルーム/ユーザーの状態を同期させるための接続設定。
+  // 本来はGoogleログイン後のSupabaseセッションから取るべき値だが、
+  // ログイン機能が未実装の現段階ではVITE_ROOM_ID/VITE_USER_IDで代用する（ローカル匿名モード用）。
+  const roomId = import.meta.env.VITE_ROOM_ID;
+  const userId = import.meta.env.VITE_USER_ID;
+  const token = import.meta.env.VITE_SUPABASE_ACCESS_TOKEN ?? "";
+  const sync: StatusSyncOptions | undefined = roomId && userId
+    ? {
+        url: import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8080/api/v1/ws",
+        token,
+        roomId,
+        userId,
+      }
+    : undefined;
+
   if (isMobile) {
-    return <StatusDisplay mood="available" />;
+    return <StatusDisplay sync={sync} />;
   }
 
-  return <ControlPanel />;
+  return <ControlPanel sync={sync} />;
 }

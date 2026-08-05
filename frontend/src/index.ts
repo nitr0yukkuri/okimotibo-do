@@ -7,4 +7,5 @@ export * from "./recognizer";
 export * from "./stabilizer";
 export * from "./types";
 export * from "./use-state-recognition";
+export * from "./use-status-sync";
 export * from "./websocket-client";
