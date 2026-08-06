@@ -8,6 +8,7 @@ import { StateSocket, type StateSocketOptions } from "./websocket-client";
 
 export interface UseStateRecognitionOptions {
   enabled?: boolean;
+  onStream?: (stream: MediaStream | undefined, error?: unknown) => void;
   recognizer?: RecognizerOptions;
   face?: MediaPipeFaceOptions;
   emotion?: EmotionApiOptions;
@@ -38,7 +39,11 @@ export function useStateRecognition(
     const start = async () => {
       const cameraPromise = attachCamera(video).then((cameraStream) => {
         stream = cameraStream;
-        if (cancelled) stopCamera(cameraStream);
+        if (cancelled) {
+          stopCamera(cameraStream);
+          return cameraStream;
+        }
+        optionsRef.current.onStream?.(cameraStream);
         return cameraStream;
       });
       try {
@@ -49,6 +54,7 @@ export function useStateRecognition(
         ]);
       } catch (error) {
         cancelled = true;
+        optionsRef.current.onStream?.(undefined, error);
         stopCamera(stream);
         recognizer.close();
         face?.close();
@@ -98,6 +104,7 @@ export function useStateRecognition(
 
     return () => {
       cancelled = true;
+      optionsRef.current.onStream?.(undefined);
       cancelAnimationFrame(animationFrame);
       socket?.close();
       recognizer.close();
