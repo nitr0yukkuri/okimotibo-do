@@ -1,54 +1,54 @@
 import { useEffect, useRef, useState } from "react";
-import { attachCamera, stopCamera } from "./camera";
 import { moodLabel, type Mood } from "./mood";
 
 interface CameraPreviewModalProps {
   mood: Mood;
+  stream?: MediaStream;
+  streamError?: unknown;
   onClose: () => void;
 }
 
-export function CameraPreviewModal({ mood, onClose }: CameraPreviewModalProps) {
+function getCameraErrorMessage(error: unknown): string {
+  return error instanceof DOMException && error.name === "NotAllowedError"
+    ? "カメラの使用が許可されていません。ブラウザの設定からカメラを許可してください。"
+    : "カメラを起動できませんでした。カメラが接続されているか確認してください。";
+}
+
+export function CameraPreviewModal({ mood, stream, streamError, onClose }: CameraPreviewModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const [cameraState, setCameraState] = useState<"starting" | "ready" | "error">("starting");
   const [cameraError, setCameraError] = useState<string | null>(null);
 
   useEffect(() => {
-    let stream: MediaStream | undefined;
+    const video = cameraVideoRef.current;
+    if (!video || !stream) {
+      setCameraState(streamError ? "error" : "starting");
+      setCameraError(streamError ? getCameraErrorMessage(streamError) : null);
+      return;
+    }
+
     let cancelled = false;
+    video.srcObject = stream;
+    video.muted = true;
+    video.playsInline = true;
 
-    const startCamera = async () => {
-      const video = cameraVideoRef.current;
-      if (!video) return;
-
-      try {
-        const nextStream = await attachCamera(video);
-        if (cancelled) {
-          stopCamera(nextStream);
-          return;
-        }
-
-        stream = nextStream;
-        setCameraState("ready");
-      } catch (error) {
-        if (cancelled) return;
-
-        setCameraState("error");
-        setCameraError(
-          error instanceof DOMException && error.name === "NotAllowedError"
-            ? "カメラの使用が許可されていません。ブラウザの設定からカメラを許可してください。"
-            : "カメラを起動できませんでした。カメラが接続されているか確認してください。",
-        );
-      }
-    };
-
-    void startCamera();
+    void video.play().then(() => {
+      if (cancelled) return;
+      setCameraState("ready");
+      setCameraError(null);
+    }).catch((error) => {
+      if (cancelled) return;
+      setCameraState("error");
+      setCameraError(getCameraErrorMessage(error));
+    });
 
     return () => {
       cancelled = true;
-      stopCamera(stream);
+      video.pause();
+      video.srcObject = null;
     };
-  }, []);
+  }, [stream, streamError]);
 
   useEffect(() => {
     const previousActiveElement = document.activeElement as HTMLElement | null;
@@ -119,7 +119,7 @@ export function CameraPreviewModal({ mood, onClose }: CameraPreviewModalProps) {
           </div>
         </div>
 
-        <p className="camera-modal-note">実際のカメラ映像を表示しています。閉じるとカメラを停止します。</p>
+        <p className="camera-modal-note">実際のカメラ映像を表示しています。</p>
         <button className="camera-modal-close" type="button" ref={closeButtonRef} onClick={onClose}>
           閉じる
         </button>
