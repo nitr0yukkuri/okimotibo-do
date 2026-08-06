@@ -273,6 +273,101 @@ input {
   color: #0076b3;
 }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-color: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+}
+
+.modal-content {
+  position: relative;
+  width: min(90vw, 600px);
+  max-height: min(86vh, 720px);
+  overflow: auto;
+  padding: 30px;
+  border-radius: 20px;
+  background-color: #ffffff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  color: #333333;
+  text-align: center;
+}
+
+.modal-close-button {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  width: 36px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1.5px solid #333333;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #333333;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-description {
+  margin: 20px 0;
+  font-size: 16px;
+}
+
+.modal-guide-container {
+  display: inline-block;
+  text-align: left;
+}
+
+.modal-guide-title {
+  margin-bottom: 5px;
+  color: #4caf50;
+}
+
+.modal-guide-list {
+  margin: 0 0 20px;
+  padding-left: 20px;
+  font-size: 16px;
+}
+
+.modal-guide-note {
+  margin: -15px 0 20px;
+  color: #666666;
+  font-size: 13px;
+}
+
+.modal-status-title {
+  margin-bottom: 5px;
+  color: #f44336;
+}
+
+.modal-status-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 16px;
+}
+
+.status-red {
+  color: #f44336;
+  font-weight: 700;
+}
+
+.status-yellow {
+  color: #ffc107;
+  font-weight: 700;
+}
+
+.status-green {
+  color: #4caf50;
+  font-weight: 700;
+}
+
 .mini-status {
   --mini-status-width: 280px;
   --mini-status-collapsed-height: 48px;
