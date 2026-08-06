@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, type MouseEvent } from "react";
 import "./App.css";
 import { useStateRecognition } from "./use-state-recognition";
 import type { RecognitionResult } from "./types";
@@ -19,6 +19,7 @@ function ControlPanel({ onLogout }: AppProps) {
   const [autoRead, setAutoRead] = useState(true);
   const [cameraTesting, setCameraTesting] = useState(true);
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
   const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
     ? {
@@ -44,10 +45,36 @@ function ControlPanel({ onLogout }: AppProps) {
     onRecognition: updateFromRecognition,
   });
 
+  useEffect(() => {
+    if (!isHelpOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsHelpOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isHelpOpen]);
+
+  const handleOverlayClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      setIsHelpOpen(false);
+    }
+  };
+
   return (
     <main className="board" aria-label="おきもちぼ〜ど">
       <header className="board-header">
-        <button className="help-button" aria-label="ヘルプ">
+        <button
+          className="help-button"
+          aria-label="ヘルプ"
+          type="button"
+          onClick={() => setIsHelpOpen(true)}
+        >
           ?
         </button>
         <img className="brand-logo" src="/okimochi_logo.png" alt="おきもちぼ〜ど" />
@@ -117,6 +144,48 @@ function ControlPanel({ onLogout }: AppProps) {
       <video ref={videoRef} hidden muted playsInline />
       {cameraPreviewOpen && (
         <CameraPreviewModal mood={selectedMood} onClose={() => setCameraPreviewOpen(false)} />
+      )}
+      {isHelpOpen && (
+        <div className="modal-overlay" onClick={handleOverlayClick}>
+          <div
+            className="modal-content"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="help-dialog-title"
+          >
+            <button
+              className="modal-close-button"
+              type="button"
+              aria-label="ヘルプを閉じる"
+              onClick={() => setIsHelpOpen(false)}
+            >
+              ×
+            </button>
+            <h3 id="help-dialog-title">おきもちぼーど<br />操作方法</h3>
+            <p className="modal-description">
+              パソコンでの作業中に邪魔されたくない時や、逆に話しかけて欲しい時に簡単に意思表示できるシステムです！
+            </p>
+
+            <div className="modal-guide-container">
+              <h4 className="modal-guide-title">使い方</h4>
+              <ol className="modal-guide-list">
+                <li>PCとスマホで同じアカウントにログインする</li>
+                <li>スマホを周囲から見える位置に置く</li>
+                <li>PCカメラにハンドサインをすると、スマホの表示が変わります！</li>
+              </ol>
+              <p className="modal-guide-note">
+                ※正しく動作されない場合、PC画面からの直接操作も可能です
+              </p>
+
+              <h4 className="modal-status-title">ステータス一覧</h4>
+              <ul className="modal-status-list">
+                <li><span className="status-red">・作業中</span> 集中したい時 👎</li>
+                <li><span className="status-yellow">・対応可能</span> 用事があれば応えられる時 横グッド</li>
+                <li><span className="status-green">・暇</span> おしゃべりしたい時 👍</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
