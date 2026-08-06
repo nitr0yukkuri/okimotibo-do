@@ -1,5 +1,5 @@
 # おきもちぼーど 
-カメラから手のジェスチャーと顔の動きをMediaPipeで読み取り、現在の状態をGo WebSocket APIでリアルタイム配信するヘッドレス実装です。UIは含みません。
+カメラから手のジェスチャーと顔の表情をMediaPipeで読み取り、現在の状態をGo WebSocket APIでリアルタイム配信します。Py-Feat v2の表情APIはデモ用として利用できます。
 
 ## 状態の定義
 
@@ -11,28 +11,32 @@
 
 `thumb_up`と`thumb_down`はMediaPipe Gesture Recognizerの標準分類を利用します。標準分類にない`shaka`は21個の手ランドマークから指の開閉を判定します。
 
-顔はFace LandmarkerのBlendshapeを使います。開始時に通常顔を約3秒学習し、そこからの眉・目・口の変化を組み合わせて`smile`、集中傾向（API上は互換性のため`frown`）、`surprised`、`neutral`として返します。手が確定している間は手を優先し、顔由来の状態変更は`smile`または集中傾向が約3秒続いた場合だけです。通常の無表情・驚き・顔未検出では状態を変更しません。最後に確定した状態は15分間有効で、同じ手の状態が続く場合は1分ごとのheartbeatで延長します。表情は本人の感情を断定するものではありません。
+通常の顔認識はMediaPipe Face LandmarkerのBlendshapeを使います。笑顔または怒り寄りの表情が約2秒続いた場合に状態を変更し、変更後は4秒間固定します。それ以外の表情では状態を変更しません。手が検出されてから3秒間は手を優先します。最後に確定した状態は15分間有効です。表情は本人の感情を断定するものではありません。
 
 ## アーキテクチャ
 
 ```text
 Camera
-  -> React / MediaPipe Tasks Vision
-     -> 3 gesture classifier
-     -> face blendshape classifier
-     -> temporal stabilizer
+  -> React
+     -> MediaPipe gesture classifier
+     -> MediaPipe face classifier
+     -> temporal stabilizer (hand priority)
   -> Go WebSocket API
      -> room broadcast
      -> Supabase Auth / Postgres
+
+Demo only:
+  React -> Python / Py-Feat v2 emotion API
 ```
 
-画像・映像・顔ランドマークはサーバーへ送りません。ブラウザ内で推論し、確定した状態と最小限のメタデータだけを送信します。
+通常のMediaPipe認識では画像をサーバーへ送りません。Py-Featのデモを有効にした場合だけ縮小JPEGをPython APIへ送り、APIは推論用の一時ファイルを処理直後に削除します。Go APIとSupabaseには画像を送りません。
 
 ## ディレクトリ
 
 ```text
 frontend/   Reactから利用するMediaPipe認識ライブラリ（画面なし）
 backend/    Go HTTP/WebSocket API
+emotion-api/ Python / Py-Feat v2表情認識API
 supabase/   PostgresマイグレーションとRLS
 render.yaml Renderデプロイ設定
 ```
@@ -46,6 +50,17 @@ npm install
 npm run build
 npm test
 ```
+
+### ローカル起動
+
+リポジトリ直下で次を実行すると、フロントエンドを開発モードで起動できます。
+
+```powershell
+cd C:\src\okimotibo-do\2026-Team-02
+npm run dev
+```
+
+通常は`http://localhost:5173/`で開きます。5173番ポートが使用中の場合は、ターミナルに表示された`Local`のURLを開いてください。終了するときは`Ctrl+C`を押します。
 
 React側では表示用の`video`要素へのrefを渡します。ライブラリ自身はUIを描画しません。
 
@@ -78,9 +93,9 @@ export function CameraRuntime() {
 - 信頼度`0.70`未満を除外
 - 直近8フレーム中6フレームの一致で確定
 - 一時的な未検出は3秒保持
-- 顔は通常顔を30サンプル学習し、眉・目・口のうち複数の変化を合成
-- 顔由来の状態変更は約3秒継続した場合だけ
-- 顔の`neutral`や`surprised`では通常API状態を上書きしない
+- MediaPipeの顔判定は約2秒の継続で確定し、変更後は4秒間固定
+- Py-Featのデモ判定は直近5回中3回の一致で確定し、`unknown`で候補をリセット
+- 手の認識後3秒間は顔で状態を上書きしない
 - 最終状態は既定で15分保持し、継続中の手ジェスチャーは1分ごとに有効期限を延長
 - WebSocket送信は確定状態の変化時または1分ごとのheartbeatだけ
 - 切断時は指数バックオフで再接続
@@ -107,6 +122,53 @@ go run ./cmd/server
 | `STATUS_TTL` | 最終状態の有効期間。既定値`15m`、最大`24h` |
 
 Secret keyをReactへ含めてはいけません。Reactが使うのはSupabaseのpublishable keyとユーザーのaccess tokenだけです。
+
+## Python表情API
+
+Py-Feat v2の学習済みモデルは研究・非商用利用向けです。Python 3.11を使用します。
+
+### 初回セットアップ
+
+```powershell
+cd C:\src\okimotibo-do\2026-Team-02
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r emotion-api\requirements.txt
+```
+
+### 2回目以降の起動
+
+リポジトリ直下で次を実行します。Py-Featはデモ用なので、利用するときだけ起動します。
+
+```powershell
+cd C:\src\okimotibo-do\2026-Team-02
+$env:ALLOWED_ORIGINS="http://localhost:5173,http://127.0.0.1:5173,http://localhost:5176,http://127.0.0.1:5176"
+.\.venv\Scripts\python.exe -m uvicorn app:app --app-dir emotion-api --host 127.0.0.1 --port 8000
+```
+
+起動後、`http://127.0.0.1:8000/healthz`を開いて応答を確認できます。終了するときは起動したターミナルで`Ctrl+C`を押します。
+
+Pythonを直接入れずDockerで起動する場合:
+
+```powershell
+docker build -t okimochi-emotion .\emotion-api
+docker run --rm -p 8000:8000 okimochi-emotion
+```
+
+初回推論時にPy-Featの学習済みモデルを取得するため時間がかかります。Reactは既定で`http://127.0.0.1:8000`へ接続します。変更する場合はフロントエンドの`.env.local`へ設定します。
+
+```dotenv
+VITE_EMOTION_API_URL=http://127.0.0.1:8000
+```
+
+Python APIの環境変数:
+
+| 環境変数 | 内容 |
+|---|---|
+| `PORT` | HTTPポート。Dockerでは既定値`8000` |
+| `ALLOWED_ORIGINS` | 許可するOrigin。カンマ区切り |
+| `PYFEAT_DEVICE` | `cpu`または`cuda`。既定値`cpu` |
+| `EMOTION_MIN_CONFIDENCE` | 赤・緑へ変更する最低信頼度。既定値`0.7` |
 
 ### HTTP
 

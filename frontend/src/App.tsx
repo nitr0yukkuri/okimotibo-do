@@ -1,29 +1,18 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, type MouseEvent } from "react";
 import "./App.css";
 import { useStateRecognition } from "./use-state-recognition";
 import type { RecognitionResult } from "./types";
 import { StatusDisplay } from "./StatusDisplay";
-
-type Mood = "busy" | "available" | "neutral";
-
-const moodOptions: Array<{ id: Mood; label: string }> = [
-  { id: "available", label: "したい" },
-  { id: "neutral", label: "いいよ" },
-  { id: "busy", label: "したくない" },
-];
-
-const moodLabel: Record<Mood, string> = {
-  available: "したい",
-  neutral: "いいよ",
-  busy: "したくない",
-};
+import { StatusPictureInPicture } from "./StatusPictureInPicture";
+import { moodLabel, moodOptions, type Mood } from "./mood";
 
 // PC用操作画面
 function ControlPanel() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
+  const [pipVisible, setPipVisible] = useState(false);
   const [autoRead, setAutoRead] = useState(true);
-  const [cameraTesting, setCameraTesting] = useState(false);
+  const [cameraTesting, setCameraTesting] = useState(true);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
   const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
@@ -35,21 +24,38 @@ function ControlPanel() {
       }
     : undefined;
 
-  const updateFromHand = (result: RecognitionResult) => {
-    if (result.source === "hand" && result.status !== "unknown") {
+  const updateFromRecognition = (result: RecognitionResult) => {
+    if (result.status !== "unknown") {
       setSelectedMood(result.status);
     }
   };
 
   useStateRecognition(videoRef, {
     enabled: cameraTesting,
+    face: {
+      enabled: autoRead,
+    },
     socket,
-    onRecognition: updateFromHand,
+    onRecognition: updateFromRecognition,
   });
 
-  //モーダルの背景をクリックした時に閉じる処理
-  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) {
+  useEffect(() => {
+    if (!isHelpOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsHelpOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isHelpOpen]);
+
+  const handleOverlayClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
       setIsHelpOpen(false);
     }
   };
@@ -57,9 +63,10 @@ function ControlPanel() {
   return (
     <main className="board" aria-label="おきもちぼ〜ど">
       <header className="board-header">
-        <button 
-          className="help-button" 
+        <button
+          className="help-button"
           aria-label="ヘルプ"
+          type="button"
           onClick={() => setIsHelpOpen(true)}
         >
           ?
@@ -96,6 +103,12 @@ function ControlPanel() {
 
         <footer className="board-footer">
           <div className="auto-read">
+            <StatusPictureInPicture
+              enabled={pipVisible}
+              mood={selectedMood}
+              onEnabledChange={setPipVisible}
+              onMoodChange={setSelectedMood}
+            />
             <label className="toggle-row">
               <span>表情読み取りでステータス更新</span>
               <input
@@ -120,12 +133,25 @@ function ControlPanel() {
       <video ref={videoRef} hidden muted playsInline />
       {isHelpOpen && (
         <div className="modal-overlay" onClick={handleOverlayClick}>
-          <div className="modal-content">
-            <h3>おきもちぼーど<br />操作方法</h3>
+          <div
+            className="modal-content"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="help-dialog-title"
+          >
+            <button
+              className="modal-close-button"
+              type="button"
+              aria-label="ヘルプを閉じる"
+              onClick={() => setIsHelpOpen(false)}
+            >
+              ×
+            </button>
+            <h3 id="help-dialog-title">おきもちぼーど<br />操作方法</h3>
             <p className="modal-description">
               パソコンでの作業中に邪魔されたくない時や、逆に話しかけて欲しい時に簡単に意思表示できるシステムです！
             </p>
-            
+
             <div className="modal-guide-container">
               <h4 className="modal-guide-title">使い方</h4>
               <ol className="modal-guide-list">
@@ -139,9 +165,9 @@ function ControlPanel() {
 
               <h4 className="modal-status-title">ステータス一覧</h4>
               <ul className="modal-status-list">
-                <li><span className="status-red">・作業中</span>  集中したい時    👎</li>
+                <li><span className="status-red">・作業中</span> 集中したい時 👎</li>
                 <li><span className="status-yellow">・対応可能</span> 用事があれば応えられる時 ハンドサイン</li>
-                <li><span className="status-green">・暇</span>    おしゃべりしたい時 👍</li>
+                <li><span className="status-green">・暇</span> おしゃべりしたい時 👍</li>
               </ul>
             </div>
           </div>
@@ -151,7 +177,6 @@ function ControlPanel() {
   );
 }
 
-// ルーティング用コンポーネント
 export function App() {
   const [isMobile, setIsMobile] = useState(() => {
     const userAgent = window.navigator.userAgent;
@@ -165,11 +190,9 @@ export function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // スマホからのアクセスの場合は全画面表示コンポーネントへ
   if (isMobile) {
     return <StatusDisplay mood="available" />;
   }
 
-  // PCからのアクセスの場合は操作画面へ
   return <ControlPanel />;
 }
