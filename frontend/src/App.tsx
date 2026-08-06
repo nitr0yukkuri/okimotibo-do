@@ -4,15 +4,21 @@ import { useStateRecognition } from "./use-state-recognition";
 import type { RecognitionResult } from "./types";
 import { StatusDisplay } from "./StatusDisplay";
 import { StatusPictureInPicture } from "./StatusPictureInPicture";
+import { CameraPreviewModal } from "./CameraPreviewModal";
 import { moodLabel, moodOptions, type Mood } from "./mood";
 
+interface AppProps {
+  onLogout: () => void;
+}
+
 // PC用操作画面
-function ControlPanel() {
+function ControlPanel({ onLogout }: AppProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [pipVisible, setPipVisible] = useState(false);
   const [autoRead, setAutoRead] = useState(true);
   const [cameraTesting, setCameraTesting] = useState(true);
+  const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
   const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
     ? {
@@ -45,7 +51,7 @@ function ControlPanel() {
           ?
         </button>
         <img className="brand-logo" src="/okimochi_logo.png" alt="おきもちぼ〜ど" />
-        <button className="logout-button" type="button">
+        <button className="logout-button" type="button" onClick={onLogout}>
           ログアウト
         </button>
       </header>
@@ -95,20 +101,28 @@ function ControlPanel() {
           </div>
 
           <button
-            className={`camera-button${cameraTesting ? " is-testing" : ""}`}
+            className="camera-button"
             type="button"
-            onClick={() => setCameraTesting((current) => !current)}
+            aria-haspopup="dialog"
+            aria-expanded={cameraPreviewOpen}
+            onClick={() => {
+              setCameraTesting((current) => !current);
+              setCameraPreviewOpen(true);
+            }}
           >
-            {cameraTesting ? "カメラ停止" : "カメラテスト"}
+            カメラテスト
           </button>
         </footer>
       </div>
       <video ref={videoRef} hidden muted playsInline />
+      {cameraPreviewOpen && (
+        <CameraPreviewModal mood={selectedMood} onClose={() => setCameraPreviewOpen(false)} />
+      )}
     </main>
   );
 }
 
-export function App() {
+export function App({ onLogout }: AppProps) {
   const [isMobile, setIsMobile] = useState(() => {
     const userAgent = window.navigator.userAgent;
     const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
@@ -122,8 +136,8 @@ export function App() {
   }, []);
 
   if (isMobile) {
-    return <StatusDisplay mood="available" />;
+    return <StatusDisplay mood="available" onLogout={onLogout} />;
   }
 
-  return <ControlPanel />;
+  return <ControlPanel onLogout={onLogout} />;
 }

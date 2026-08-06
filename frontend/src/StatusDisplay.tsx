@@ -5,9 +5,10 @@ type Mood = "busy" | "available" | "neutral";
 
 interface StatusDisplayProps {
   mood: Mood;
+  onLogout: () => void;
 }
 
-export function StatusDisplay({ mood: initialMood }: StatusDisplayProps) {
+export function StatusDisplay({ mood: initialMood, onLogout }: StatusDisplayProps) {
   const [mood, setMood] = useState<Mood>(initialMood);
 
   const content = {
@@ -51,7 +52,7 @@ export function StatusDisplay({ mood: initialMood }: StatusDisplayProps) {
         <h1>{current.title}</h1>
         <p>{current.subtitle}</p>
       </div>
-      <button className="status-logout" type="button">
+      <button className="status-logout" type="button" onClick={onLogout}>
           ログアウト
       </button>
     </div>
