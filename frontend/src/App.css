@@ -273,6 +273,214 @@ input {
   color: #0076b3;
 }
 
+.camera-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(28, 34, 30, 0.48);
+  backdrop-filter: blur(3px);
+}
+
+.camera-modal {
+  display: grid;
+  gap: 20px;
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(720px, calc(100dvh - 32px));
+  overflow: auto;
+  padding: 26px;
+  border: 1px solid rgba(35, 35, 35, 0.12);
+  border-radius: 28px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(20, 35, 24, 0.26);
+}
+
+.camera-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.camera-modal-kicker {
+  margin: 0 0 4px;
+  color: #5a8c60;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.camera-modal h2 {
+  margin: 0;
+  color: #232323;
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.camera-modal-icon-button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #f0f3f0;
+  color: #333333;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.camera-modal-preview {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  padding: 24px;
+  border-radius: 22px;
+}
+
+.preview-available {
+  background: #eaffeb;
+}
+
+.preview-neutral {
+  background: #fff8d9;
+}
+
+.preview-busy {
+  background: #ffe7e6;
+}
+
+.camera-preview-frame {
+  position: relative;
+  display: grid;
+  width: min(300px, 100%);
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  place-items: center;
+  border: 3px solid rgba(35, 35, 35, 0.72);
+  border-radius: 20px;
+  background: #151a17;
+}
+
+.camera-preview-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.camera-preview-message {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(21, 26, 23, 0.82);
+  color: #ffffff;
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.camera-preview-message-error {
+  color: #ffe9e7;
+}
+
+.camera-preview-mark {
+  display: grid;
+  width: 116px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 8px solid currentColor;
+  border-radius: 50%;
+  color: #44df44;
+  font-size: 72px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.preview-neutral .camera-preview-mark {
+  border-color: transparent;
+  color: #f0d121;
+}
+
+.preview-busy .camera-preview-mark {
+  border-color: transparent;
+  color: #e83232;
+}
+
+.camera-preview-corner {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-color: #333333;
+  border-style: solid;
+}
+
+.camera-preview-corner-top-left {
+  top: 14px;
+  left: 14px;
+  border-width: 3px 0 0 3px;
+}
+
+.camera-preview-corner-top-right {
+  top: 14px;
+  right: 14px;
+  border-width: 3px 3px 0 0;
+}
+
+.camera-preview-corner-bottom-left {
+  bottom: 14px;
+  left: 14px;
+  border-width: 0 0 3px 3px;
+}
+
+.camera-preview-corner-bottom-right {
+  right: 14px;
+  bottom: 14px;
+  border-width: 0 3px 3px 0;
+}
+
+.camera-preview-status {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  color: #333333;
+  text-align: center;
+}
+
+.camera-preview-status strong {
+  font-size: 26px;
+}
+
+.camera-preview-status span,
+.camera-modal-note {
+  color: #6f766f;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.camera-modal-note {
+  margin: 0;
+  text-align: center;
+}
+
+.camera-modal-close {
+  min-height: 50px;
+  border: 1.5px solid #333333;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #333333;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
