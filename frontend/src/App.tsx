@@ -15,9 +15,10 @@ interface AppProps {
 function ControlPanel({ onLogout }: AppProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
+  const [cameraStream, setCameraStream] = useState<MediaStream | undefined>();
+  const [cameraStreamError, setCameraStreamError] = useState<unknown>();
   const [pipVisible, setPipVisible] = useState(false);
   const [autoRead, setAutoRead] = useState(true);
-  const [cameraTesting, setCameraTesting] = useState(true);
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -37,7 +38,11 @@ function ControlPanel({ onLogout }: AppProps) {
   };
 
   useStateRecognition(videoRef, {
-    enabled: cameraTesting,
+    enabled: true,
+    onStream: (stream, error) => {
+      setCameraStream(stream);
+      setCameraStreamError(error);
+    },
     face: {
       enabled: autoRead,
     },
@@ -132,10 +137,7 @@ function ControlPanel({ onLogout }: AppProps) {
             type="button"
             aria-haspopup="dialog"
             aria-expanded={cameraPreviewOpen}
-            onClick={() => {
-              setCameraTesting((current) => !current);
-              setCameraPreviewOpen(true);
-            }}
+            onClick={() => setCameraPreviewOpen(true)}
           >
             カメラテスト
           </button>
@@ -143,7 +145,12 @@ function ControlPanel({ onLogout }: AppProps) {
       </div>
       <video ref={videoRef} hidden muted playsInline />
       {cameraPreviewOpen && (
-        <CameraPreviewModal mood={selectedMood} onClose={() => setCameraPreviewOpen(false)} />
+        <CameraPreviewModal
+          mood={selectedMood}
+          stream={cameraStream}
+          streamError={cameraStreamError}
+          onClose={() => setCameraPreviewOpen(false)}
+        />
       )}
       {isHelpOpen && (
         <div className="modal-overlay" onClick={handleOverlayClick}>
