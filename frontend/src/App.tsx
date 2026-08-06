@@ -166,7 +166,7 @@ function ControlPanel() {
               <h4 className="modal-status-title">ステータス一覧</h4>
               <ul className="modal-status-list">
                 <li><span className="status-red">・作業中</span> 集中したい時 👎</li>
-                <li><span className="status-yellow">・対応可能</span> 用事があれば応えられる時 ハンドサイン</li>
+                <li><span className="status-yellow">・対応可能</span> 用事があれば応えられる時 横グッド</li>
                 <li><span className="status-green">・暇</span> おしゃべりしたい時 👍</li>
               </ul>
             </div>
