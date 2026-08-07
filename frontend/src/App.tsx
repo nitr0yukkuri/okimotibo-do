@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, type MouseEvent } from "react";
+import type { Session } from "@supabase/supabase-js";
 import "./App.css";
 import { useStateRecognition } from "./use-state-recognition";
 import type { RecognitionResult } from "./types";
@@ -6,13 +7,15 @@ import { StatusDisplay } from "./StatusDisplay";
 import { StatusPictureInPicture } from "./StatusPictureInPicture";
 import { CameraPreviewModal } from "./CameraPreviewModal";
 import { moodLabel, moodOptions, type Mood } from "./mood";
+import { useStatusSync, type StatusSyncOptions } from "./use-status-sync";
 
 interface AppProps {
+  session?: Session;
   onLogout: () => void;
 }
 
 // PC用操作画面
-function ControlPanel({ onLogout }: AppProps) {
+function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [cameraStream, setCameraStream] = useState<MediaStream | undefined>();
@@ -22,19 +25,25 @@ function ControlPanel({ onLogout }: AppProps) {
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-  const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
-    ? {
-        url: import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8080/api/v1/ws",
-        token: import.meta.env.VITE_SUPABASE_ACCESS_TOKEN,
-        roomId: import.meta.env.VITE_ROOM_ID,
-        clientId,
-      }
-    : undefined;
+  // カメラ検出専用のソケット(recognition.update送信用)。
+  const cameraSocket = sync ? { ...sync, clientId } : undefined;
+  // カメラのON/OFFに関わらず常時つながる同期用ソケット。他端末(スマホ等)からの変更もここで受け取る。
+  const { status: syncedMood, sendManual } = useStatusSync(sync);
+
+  useEffect(() => {
+    setSelectedMood(syncedMood);
+  }, [syncedMood]);
 
   const updateFromRecognition = (result: RecognitionResult) => {
     if (result.status !== "unknown") {
       setSelectedMood(result.status);
     }
+  };
+
+  // ボタン操作は画面表示をすぐ切り替えつつ、サーバーにも送って他端末へ配信する。
+  const handleManualMoodChange = (mood: Mood) => {
+    setSelectedMood(mood);
+    sendManual(mood);
   };
 
   useStateRecognition(videoRef, {
@@ -46,7 +55,7 @@ function ControlPanel({ onLogout }: AppProps) {
     face: {
       enabled: autoRead,
     },
-    socket,
+    socket: cameraSocket,
     onRecognition: updateFromRecognition,
   });
 
@@ -99,7 +108,7 @@ function ControlPanel({ onLogout }: AppProps) {
                 type="button"
                 aria-pressed={selectedMood === option.id}
                 key={option.id}
-                onClick={() => setSelectedMood(option.id)}
+                onClick={() => handleManualMoodChange(option.id)}
               >
                 {option.label}
               </button>
@@ -118,7 +127,7 @@ function ControlPanel({ onLogout }: AppProps) {
               enabled={pipVisible}
               mood={selectedMood}
               onEnabledChange={setPipVisible}
-              onMoodChange={setSelectedMood}
+              onMoodChange={handleManualMoodChange}
             />
             <label className="toggle-row">
               <span>表情読み取りでステータス更新</span>
@@ -198,7 +207,7 @@ function ControlPanel({ onLogout }: AppProps) {
   );
 }
 
-export function App({ onLogout }: AppProps) {
+export function App({ session, onLogout }: AppProps) {
   const [isMobile, setIsMobile] = useState(() => {
     const userAgent = window.navigator.userAgent;
     const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
@@ -211,9 +220,25 @@ export function App({ onLogout }: AppProps) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // PC・スマホの両画面で同じルーム/ユーザーの状態を同期させるための接続設定。
+  // ログイン済みならSupabaseセッションの本物のuserId/access_tokenを使い、
+  // 未ログイン(ローカル匿名検証)時のみ.envの仮値にフォールバックする。
+  const roomId = import.meta.env.VITE_ROOM_ID;
+  const userId = session?.user.id ?? import.meta.env.VITE_USER_ID;
+  const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ACCESS_TOKEN ?? "";
+  const sync: StatusSyncOptions | undefined = roomId && userId
+    ? {
+        // 127.0.0.1は環境(セキュリティソフト等)によって疎通しないことがあるため、既定値はlocalhostにする。
+        url: import.meta.env.VITE_WS_URL ?? "ws://localhost:8080/api/v1/ws",
+        token,
+        roomId,
+        userId,
+      }
+    : undefined;
+
   if (isMobile) {
-    return <StatusDisplay mood="available" onLogout={onLogout} />;
+    return <StatusDisplay sync={sync} onLogout={onLogout} />;
   }
 
-  return <ControlPanel onLogout={onLogout} />;
+  return <ControlPanel sync={sync} onLogout={onLogout} />;
 }

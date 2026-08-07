@@ -1,3 +1,4 @@
+import type { Mood } from "./mood";
 import type { RecognitionResult } from "./types";
 
 export interface StateSocketOptions {
@@ -53,6 +54,25 @@ export class StateSocket extends EventTarget {
       } : null,
       status: result.status,
       source: result.source,
+    };
+    this.socket.send(JSON.stringify(message));
+    this.dispatchEvent(new CustomEvent("recognition.sent", { detail: message }));
+    return true;
+  }
+
+  // 手動ボタン操作用。sendRecognitionと違い、連続フレーム向けのheartbeat/重複排除は行わず、
+  // クリックのたびに必ず1回送信する（単発の明示的な操作のため）。
+  sendManual(status: Mood): boolean {
+    if (!this.ready || this.socket?.readyState !== WebSocket.OPEN) return false;
+
+    this.lastStatus = status;
+    this.lastSentAt = Date.now();
+    const message = {
+      type: "recognition.update",
+      sequence: ++this.sequence,
+      capturedAt: new Date().toISOString(),
+      status,
+      source: "manual",
     };
     this.socket.send(JSON.stringify(message));
     this.dispatchEvent(new CustomEvent("recognition.sent", { detail: message }));
