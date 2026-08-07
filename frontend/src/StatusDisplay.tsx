@@ -1,15 +1,16 @@
-import React, { useState } from "react";
+import React from "react";
 import "./StatusDisplay.css";
-
-type Mood = "busy" | "available" | "neutral";
+import { useStatusSync, type StatusSyncOptions } from "./use-status-sync";
 
 interface StatusDisplayProps {
-  mood: Mood;
+  sync?: StatusSyncOptions;
   onLogout: () => void;
 }
 
-export function StatusDisplay({ mood: initialMood, onLogout }: StatusDisplayProps) {
-  const [mood, setMood] = useState<Mood>(initialMood);
+export function StatusDisplay({ sync, onLogout }: StatusDisplayProps) {
+  // PC側(ControlPanel)でのカメラ検出・ボタン操作の結果をリアルタイムに受信するだけで、
+  // このスマホ画面自体からステータスを変更する操作は持たない。
+  const { status: mood } = useStatusSync(sync);
 
   const content = {
     busy: {

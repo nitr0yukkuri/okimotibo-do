@@ -38,3 +38,22 @@ func TestFaceDerivedStateValidate(t *testing.T) {
 		t.Fatal("mismatched face status should fail")
 	}
 }
+
+func TestManualSourceValidate(t *testing.T) {
+	now := time.Now().UTC()
+	state := State{Sequence: 1, CapturedAt: now, ReceivedAt: now, ExpiresAt: now.Add(15 * time.Minute), Status: StatusBusy, Source: SourceManual}
+	if err := state.Validate(now); err != nil {
+		t.Fatalf("valid manual state rejected: %v", err)
+	}
+
+	state.Status = StatusUnknown
+	if err := state.Validate(now); err == nil {
+		t.Fatal("manual source with unknown status should fail")
+	}
+
+	state.Status = StatusBusy
+	state.Hand = &Hand{Gesture: "thumb_down", Confidence: .9}
+	if err := state.Validate(now); err == nil {
+		t.Fatal("manual source with hand data should fail")
+	}
+}

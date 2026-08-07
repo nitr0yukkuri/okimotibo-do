@@ -112,7 +112,7 @@ export class MediaPipeFaceRecognizer {
       smileHoldMs: options.smileHoldMs ?? 2_000,
       lockMs: options.lockMs ?? 4_000,
       minConfidence: options.minConfidence ?? 0.55,
-      busyMinConfidence: options.busyMinConfidence ?? 0.45,
+      busyMinConfidence: options.busyMinConfidence ?? 0.38,
       delegate: options.delegate ?? "GPU",
     };
     this.gate = new SustainedExpressionGate(this.options.smileHoldMs, this.options.lockMs);

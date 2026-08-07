@@ -44,6 +44,23 @@ describe("AdaptiveFaceClassifier", () => {
     expect(result.scores.busy).toBeGreaterThanOrEqual(0.42);
   });
 
+  it("accepts a moderately tense expression as a busy candidate", () => {
+    const classifier = calibratedClassifier();
+    const result = classifier.classify({
+      browDownLeft: 0.18,
+      browDownRight: 0.18,
+      eyeSquintLeft: 0.18,
+      eyeSquintRight: 0.18,
+      mouthPressLeft: 0.18,
+      mouthPressRight: 0.18,
+      mouthFrownLeft: 0.18,
+      mouthFrownRight: 0.18,
+    });
+
+    expect(result.expression).toBe("frown");
+    expect(result.scores.busy).toBeGreaterThanOrEqual(0.38);
+  });
+
   it("keeps the stateless helper for previews", () => {
     expect(classifyExpression({ mouthSmileLeft: 0.8, mouthSmileRight: 0.9 }).expression).toBe("smile");
   });
