@@ -4,11 +4,18 @@ import { supabase } from "./supabase-client";
 // 実際のGoogleログインはSupabase Authに委譲する。
 // supabase未設定(.env.local未設定)の場合はボタンを無効化し、原因がわかるようにする。
 const Login = () => {
-  const handleLogin = () => {
-    supabase?.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
+  const handleLogin = async () => {
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) console.error("Google login could not be started", error);
+    } catch (error) {
+      console.error("Google login could not be started", error);
+    }
   };
 
   return (

@@ -10,16 +10,24 @@ import { supabase } from "./supabase-client";
 function Root() {
   const [session, setSession] = useState<Session | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
+  const anonymousMode = !supabase && import.meta.env.DEV &&
+    Boolean(import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_USER_ID);
 
   useEffect(() => {
     if (!supabase) {
       setCheckingSession(false);
       return;
     }
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setCheckingSession(false);
-    });
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        setSession(data.session);
+      })
+      .catch(() => {
+        setSession(null);
+      })
+      .finally(() => {
+        setCheckingSession(false);
+      });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
     });
@@ -27,6 +35,7 @@ function Root() {
   }, []);
 
   if (checkingSession) return null;
+  if (anonymousMode) return <App onLogout={() => {}} />;
   return session
     ? <App session={session} onLogout={() => supabase?.auth.signOut()} />
     : <Login />;

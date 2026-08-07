@@ -225,11 +225,15 @@ export function App({ session, onLogout }: AppProps) {
   // 未ログイン(ローカル匿名検証)時のみ.envの仮値にフォールバックする。
   const roomId = import.meta.env.VITE_ROOM_ID;
   const userId = session?.user.id ?? import.meta.env.VITE_USER_ID;
-  const token = session?.access_token ?? import.meta.env.VITE_SUPABASE_ACCESS_TOKEN ?? "";
-  const sync: StatusSyncOptions | undefined = roomId && userId
+  const token = session?.access_token ?? "";
+  // 開発時だけlocalhostを既定値にし、本番ではRender等のTLS付きURLを必須にする。
+  const wsUrl = import.meta.env.VITE_WS_URL ?? (
+    import.meta.env.DEV ? "ws://localhost:8080/api/v1/ws" : undefined
+  );
+  const sync: StatusSyncOptions | undefined = roomId && userId && wsUrl
     ? {
         // 127.0.0.1は環境(セキュリティソフト等)によって疎通しないことがあるため、既定値はlocalhostにする。
-        url: import.meta.env.VITE_WS_URL ?? "ws://localhost:8080/api/v1/ws",
+        url: wsUrl,
         token,
         roomId,
         userId,

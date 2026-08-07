@@ -96,7 +96,7 @@ export class AdaptiveFaceClassifier {
     if (available >= 0.48 && available >= busy && available >= surprised) {
       expression = "smile";
       confidence = available;
-    } else if (busy >= 0.42 && busy >= surprised) {
+    } else if (busy >= 0.38 && busy >= surprised) {
       // API名は後方互換のためfrownだが、複数特徴による「集中傾向」を表す。
       expression = "frown";
       confidence = busy;

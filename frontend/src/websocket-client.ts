@@ -20,6 +20,7 @@ export class StateSocket extends EventTarget {
   private reconnectTimer?: number;
   private ready = false;
   private lastSentAt = 0;
+  private pendingManual?: Mood;
 
   constructor(private readonly options: StateSocketOptions) {
     super();
@@ -63,7 +64,19 @@ export class StateSocket extends EventTarget {
   // 手動ボタン操作用。sendRecognitionと違い、連続フレーム向けのheartbeat/重複排除は行わず、
   // クリックのたびに必ず1回送信する（単発の明示的な操作のため）。
   sendManual(status: Mood): boolean {
-    if (!this.ready || this.socket?.readyState !== WebSocket.OPEN) return false;
+    if (!this.ready || this.socket?.readyState !== WebSocket.OPEN) {
+      // The button is intentionally usable while the connection is starting.
+      // Keep the latest explicit choice so it is delivered after server.ready.
+      this.pendingManual = status;
+      return false;
+    }
+
+    return this.sendManualNow(status);
+  }
+
+  private sendManualNow(status: Mood): boolean {
+    const socket = this.socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
 
     this.lastStatus = status;
     this.lastSentAt = Date.now();
@@ -74,7 +87,7 @@ export class StateSocket extends EventTarget {
       status,
       source: "manual",
     };
-    this.socket.send(JSON.stringify(message));
+    socket.send(JSON.stringify(message));
     this.dispatchEvent(new CustomEvent("recognition.sent", { detail: message }));
     return true;
   }
@@ -82,6 +95,7 @@ export class StateSocket extends EventTarget {
   close(): void {
     this.closed = true;
     this.ready = false;
+    this.pendingManual = undefined;
     this.lastSentAt = 0;
     if (this.reconnectTimer !== undefined) window.clearTimeout(this.reconnectTimer);
     this.socket?.close(1000, "client shutdown");
@@ -106,6 +120,11 @@ export class StateSocket extends EventTarget {
         const data = JSON.parse(String(event.data));
         if (data?.type === "server.ready") {
           this.ready = true;
+          const pendingManual = this.pendingManual;
+          this.pendingManual = undefined;
+          if (pendingManual !== undefined) {
+            this.sendManualNow(pendingManual);
+          }
           this.dispatchEvent(new Event("open"));
         }
         this.dispatchEvent(new MessageEvent("message", { data }));
