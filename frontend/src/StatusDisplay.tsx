@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import "./StatusDisplay.css";
+import { supabase } from "./supabase-client";
 
 type Mood = "busy" | "available" | "neutral";
 
@@ -51,7 +52,7 @@ export function StatusDisplay({ mood: initialMood }: StatusDisplayProps) {
         <h1>{current.title}</h1>
         <p>{current.subtitle}</p>
       </div>
-      <button className="status-logout" type="button">
+      <button className="status-logout" type="button" onClick={() => supabase?.auth.signOut()}>
           ログアウト
       </button>
     </div>

@@ -1,23 +1,28 @@
 import { useRef, useState, useEffect } from "react";
+import type { Session } from "@supabase/supabase-js";
 import "./App.css";
 import { useStateRecognition } from "./use-state-recognition";
 import type { RecognitionResult } from "./types";
 import { StatusDisplay } from "./StatusDisplay";
 import { StatusPictureInPicture } from "./StatusPictureInPicture";
 import { moodLabel, moodOptions, type Mood } from "./mood";
+import { supabase } from "./supabase-client";
 
 // PC用操作画面
-function ControlPanel() {
+function ControlPanel({ session }: { session?: Session }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [pipVisible, setPipVisible] = useState(false);
   const [autoRead, setAutoRead] = useState(true);
   const [cameraTesting, setCameraTesting] = useState(true);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-  const socket = import.meta.env.VITE_ROOM_ID && import.meta.env.VITE_SUPABASE_ACCESS_TOKEN
+  // ログイン済みならSupabaseセッションの本物のアクセストークンを使い、
+  // 未ログイン(ローカル匿名検証)時のみ.envの仮トークンにフォールバックする。
+  const accessToken = session?.access_token ?? import.meta.env.VITE_SUPABASE_ACCESS_TOKEN;
+  const socket = import.meta.env.VITE_ROOM_ID && accessToken
     ? {
         url: import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8080/api/v1/ws",
-        token: import.meta.env.VITE_SUPABASE_ACCESS_TOKEN,
+        token: accessToken,
         roomId: import.meta.env.VITE_ROOM_ID,
         clientId,
       }
@@ -45,7 +50,7 @@ function ControlPanel() {
           ?
         </button>
         <img className="brand-logo" src="/okimochi_logo.png" alt="おきもちぼ〜ど" />
-        <button className="logout-button" type="button">
+        <button className="logout-button" type="button" onClick={() => supabase?.auth.signOut()}>
           ログアウト
         </button>
       </header>
@@ -108,7 +113,7 @@ function ControlPanel() {
   );
 }
 
-export function App() {
+export function App({ session }: { session?: Session }) {
   const [isMobile, setIsMobile] = useState(() => {
     const userAgent = window.navigator.userAgent;
     const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
@@ -125,5 +130,5 @@ export function App() {
     return <StatusDisplay mood="available" />;
   }
 
-  return <ControlPanel />;
+  return <ControlPanel session={session} />;
 }
