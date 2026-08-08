@@ -81,11 +81,13 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 	messageKind, data, err := conn.Read(authCtx)
 	authCancel()
 	if err != nil {
+		s.logger.Warn("client.hello not received", "error", err)
 		conn.Close(websocket.StatusPolicyViolation, "client.hello required")
 		return
 	}
 	var hello helloMessage
 	if messageKind != websocket.MessageText || decodeStrict(data, &hello) != nil || hello.Type != "client.hello" || !validID(hello.RoomID) || !validID(hello.ClientID) {
+		s.logger.Warn("invalid client.hello", "messageKind", messageKind)
 		conn.Close(websocket.StatusPolicyViolation, "invalid client.hello")
 		return
 	}
@@ -93,17 +95,20 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 	userID := hello.UserID
 	if s.cfg.AllowAnonymous {
 		if !validID(userID) {
+			s.logger.Warn("anonymous userId missing or invalid")
 			conn.Close(websocket.StatusPolicyViolation, "userId required")
 			return
 		}
 	} else {
 		userID, err = s.store.Authenticate(ctx, hello.Token)
 		if err != nil {
+			s.logger.Warn("authentication failed", "error", err)
 			conn.Close(websocket.StatusPolicyViolation, "authentication failed")
 			return
 		}
 	}
 	if err := s.store.AuthorizeRoom(ctx, userID, hello.RoomID); err != nil {
+		s.logger.Warn("room access denied", "error", err, "roomId", hello.RoomID, "userId", userID)
 		conn.Close(websocket.StatusPolicyViolation, "room access denied")
 		return
 	}
