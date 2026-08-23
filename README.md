@@ -1,4 +1,7 @@
 # おきもちぼーど 
+
+> **お知らせ:** このプライベートリポジトリの内容は、公開リポジトリ [nitr0yukkuri/okimotibo-do](https://github.com/nitr0yukkuri/okimotibo-do) へ移行しました。公開版はそちらをご覧ください。
+
 カメラから手のジェスチャーと顔の表情をMediaPipeで読み取り、現在の状態をGo WebSocket APIでリアルタイム配信します。Py-Feat v2の表情APIはデモ用として利用できます。
 
 ## 状態の定義
