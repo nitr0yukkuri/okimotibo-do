@@ -6,16 +6,86 @@ import type { RecognitionResult } from "./types";
 import { StatusDisplay } from "./StatusDisplay";
 import { StatusPictureInPicture } from "./StatusPictureInPicture";
 import { CameraPreviewModal } from "./CameraPreviewModal";
+import { PairingQrModal } from "./PairingQrModal";
+import { ModalFrame } from "./ModalFrame";
 import { moodLabel, moodOptions, type Mood } from "./mood";
 import { useStatusSync, type StatusSyncOptions } from "./use-status-sync";
+import { getAnonymousIdentity, type PairingSession } from "./pairing";
+import { supabase } from "./supabase-client";
 
 interface AppProps {
   session?: Session;
+  pairing?: PairingSession;
   onLogout: () => void;
 }
 
+function resolveWebSocketUrl(configured: string | undefined): string | undefined {
+  if (!configured) {
+    if (!import.meta.env.DEV) return undefined;
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}/api/v1/ws`;
+  }
+  if (configured.startsWith("ws://")) {
+    try {
+      const target = new URL(configured);
+      const isPrivateHost = target.hostname === "localhost" || target.hostname === "127.0.0.1" ||
+        /^(10|192\.168|172\.(1[6-9]|2\d|3[0-1]))\./.test(target.hostname);
+      if (isPrivateHost) {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        return `${protocol}//${window.location.host}/api/v1/ws`;
+      }
+    } catch {
+      return configured;
+    }
+  }
+  return configured;
+}
+
+interface RoomSelection {
+  roomId?: string;
+  loading: boolean;
+}
+
+function useRoomId(session: Session | undefined, pairing?: PairingSession): RoomSelection {
+  const configuredRoomId = pairing?.roomId ?? import.meta.env.VITE_ROOM_ID;
+  const [discoveredRoomId, setDiscoveredRoomId] = useState<string>();
+  const [loading, setLoading] = useState(!configuredRoomId && !!session && !!supabase);
+
+  useEffect(() => {
+    if (configuredRoomId || !session || !supabase) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    void Promise.resolve(
+      supabase
+        .from("room_members")
+        .select("room_id")
+        .eq("user_id", session.user.id)
+        .limit(1)
+        .then(({ data, error }) => {
+          if (cancelled) return;
+          if (error) {
+            console.warn("Failed to discover a room for the signed-in user.", error);
+          }
+          setDiscoveredRoomId(data?.[0]?.room_id);
+          setLoading(false);
+        }),
+    ).catch((error: unknown) => {
+      if (cancelled) return;
+      console.warn("Failed to discover a room for the signed-in user.", error);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [configuredRoomId, session?.user.id]);
+
+  return { roomId: configuredRoomId ?? discoveredRoomId, loading };
+}
+
 // PC用操作画面
-function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: () => void }) {
+function ControlPanel({ sync, roomLoading, onLogout }: { sync?: StatusSyncOptions; roomLoading?: boolean; onLogout: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [cameraStream, setCameraStream] = useState<MediaStream | undefined>();
@@ -24,7 +94,9 @@ function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: 
   const [autoRead, setAutoRead] = useState(true);
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isPairingOpen, setIsPairingOpen] = useState(false);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+  const pairingEnabled = import.meta.env.VITE_ANONYMOUS_MODE === "true";
   // カメラ検出専用のソケット(recognition.update送信用)。
   const cameraSocket = sync ? { ...sync, clientId } : undefined;
   // カメラのON/OFFに関わらず常時つながる同期用ソケット。他端末(スマホ等)からの変更もここで受け取る。
@@ -150,6 +222,18 @@ function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: 
           >
             カメラテスト
           </button>
+          {pairingEnabled && (
+            <button
+              className="pairing-open-button"
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded={isPairingOpen}
+              onClick={() => setIsPairingOpen(true)}
+              disabled={!sync}
+            >
+              スマホ接続
+            </button>
+          )}
         </footer>
       </div>
       <video ref={videoRef} hidden muted playsInline />
@@ -162,13 +246,12 @@ function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: 
         />
       )}
       {isHelpOpen && (
-        <div className="modal-overlay" onClick={handleOverlayClick}>
-          <div
-            className="modal-content"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="help-dialog-title"
-          >
+        <ModalFrame
+          backdropClassName="modal-overlay"
+          contentClassName="modal-content"
+          labelledBy="help-dialog-title"
+          onBackdropClick={handleOverlayClick}
+        >
             <button
               className="modal-close-button"
               type="button"
@@ -200,14 +283,14 @@ function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: 
                 <li><span className="status-green">・暇</span> おしゃべりしたい時 👍</li>
               </ul>
             </div>
-          </div>
-        </div>
+        </ModalFrame>
       )}
+      {pairingEnabled && isPairingOpen && <PairingQrModal sync={sync} roomLoading={roomLoading} onClose={() => setIsPairingOpen(false)} />}
     </main>
   );
 }
 
-export function App({ session, onLogout }: AppProps) {
+export function App({ session, pairing, onLogout }: AppProps) {
   const [isMobile, setIsMobile] = useState(() => {
     const userAgent = window.navigator.userAgent;
     const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
@@ -223,13 +306,13 @@ export function App({ session, onLogout }: AppProps) {
   // PC・スマホの両画面で同じルーム/ユーザーの状態を同期させるための接続設定。
   // ログイン済みならSupabaseセッションの本物のuserId/access_tokenを使い、
   // 未ログイン(ローカル匿名検証)時のみ.envの仮値にフォールバックする。
-  const roomId = import.meta.env.VITE_ROOM_ID;
-  const userId = session?.user.id ?? import.meta.env.VITE_USER_ID;
-  const token = session?.access_token ?? "";
+  const [anonymousIdentity] = useState(() => getAnonymousIdentity());
+  const { roomId: discoveredRoomId, loading: roomLoading } = useRoomId(session, pairing);
+  const roomId = discoveredRoomId ?? (session || pairing ? undefined : import.meta.env.VITE_ROOM_ID ?? anonymousIdentity.roomId);
+  const userId = pairing?.userId ?? session?.user.id ?? import.meta.env.VITE_USER_ID ?? anonymousIdentity.userId;
+  const token = pairing?.token ?? session?.access_token ?? "";
   // 開発時だけlocalhostを既定値にし、本番ではRender等のTLS付きURLを必須にする。
-  const wsUrl = import.meta.env.VITE_WS_URL ?? (
-    import.meta.env.DEV ? "ws://localhost:8080/api/v1/ws" : undefined
-  );
+  const wsUrl = resolveWebSocketUrl(import.meta.env.VITE_WS_URL);
   const sync: StatusSyncOptions | undefined = roomId && userId && wsUrl
     ? {
         // 127.0.0.1は環境(セキュリティソフト等)によって疎通しないことがあるため、既定値はlocalhostにする。
@@ -244,5 +327,5 @@ export function App({ session, onLogout }: AppProps) {
     return <StatusDisplay sync={sync} onLogout={onLogout} />;
   }
 
-  return <ControlPanel sync={sync} onLogout={onLogout} />;
+  return <ControlPanel sync={sync} roomLoading={roomLoading} onLogout={onLogout} />;
 }
