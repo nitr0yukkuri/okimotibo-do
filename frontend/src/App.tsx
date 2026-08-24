@@ -96,7 +96,7 @@ function ControlPanel({ sync, roomLoading, onLogout }: { sync?: StatusSyncOption
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isPairingOpen, setIsPairingOpen] = useState(false);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-  const pairingEnabled = import.meta.env.VITE_ANONYMOUS_MODE === "true";
+  const pairingEnabled = sync !== undefined && (sync.token !== "" || import.meta.env.VITE_ANONYMOUS_MODE === "true");
   // カメラ検出専用のソケット(recognition.update送信用)。
   const cameraSocket = sync ? { ...sync, clientId } : undefined;
   // カメラのON/OFFに関わらず常時つながる同期用ソケット。他端末(スマホ等)からの変更もここで受け取る。
