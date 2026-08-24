@@ -73,6 +73,6 @@
   cursor: pointer;
   transform: scale(1.1) translateY(-5px);
   position: absolute;
-  bottom: 3vh;
+  bottom: calc(3vh + 12px);
   right: 3vh;
 }
