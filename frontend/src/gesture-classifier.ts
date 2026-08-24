@@ -21,6 +21,7 @@ const PINKY_TIP = 20;
 export interface GestureClassification {
   gesture: Gesture;
   confidence: number;
+  isFist?: boolean;
 }
 
 function distance(a: Landmark, b: Landmark): number {
@@ -73,6 +74,10 @@ export function classifyLandmarks(points: Landmark[]): GestureClassification {
     return { gesture: "shaka", confidence: 0.88 };
   }
 
+  if (indexFolded && middleFolded && ringFolded && pinkyFolded && thumbIsNearPalm(points, scale)) {
+    return { gesture: "unknown", confidence: 0, isFist: true };
+  }
+
   if (!(thumb && indexFolded && middleFolded && ringFolded && pinkyFolded)) {
     return { gesture: "unknown", confidence: 0 };
   }
@@ -93,4 +98,12 @@ export function normalizeMediaPipeGesture(name?: string): Gesture {
   if (name === "Thumb_Up") return "thumb_up";
   if (name === "Thumb_Down") return "thumb_down";
   return "unknown";
+}
+
+function thumbIsNearPalm(points: Landmark[], scale: number): boolean {
+  const distanceToPalm = Math.min(
+    distance(points[THUMB_TIP], points[INDEX_MCP]),
+    distance(points[THUMB_TIP], points[MIDDLE_MCP]),
+  );
+  return distanceToPalm <= scale * 0.65;
 }
