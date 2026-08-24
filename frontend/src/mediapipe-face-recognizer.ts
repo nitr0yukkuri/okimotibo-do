@@ -109,10 +109,10 @@ export class MediaPipeFaceRecognizer {
       wasmRoot: options.wasmRoot ?? DEFAULT_WASM,
       faceModelUrl: options.faceModelUrl ?? DEFAULT_FACE_MODEL,
       inferenceIntervalMs: options.inferenceIntervalMs ?? 100,
-      smileHoldMs: options.smileHoldMs ?? 2_000,
+      smileHoldMs: options.smileHoldMs ?? 1_500,
       lockMs: options.lockMs ?? 4_000,
       minConfidence: options.minConfidence ?? 0.55,
-      busyMinConfidence: options.busyMinConfidence ?? 0.38,
+      busyMinConfidence: options.busyMinConfidence ?? 0.35,
       delegate: options.delegate ?? "GPU",
     };
     this.gate = new SustainedExpressionGate(this.options.smileHoldMs, this.options.lockMs);
