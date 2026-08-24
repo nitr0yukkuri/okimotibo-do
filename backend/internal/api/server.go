@@ -20,27 +20,32 @@ import (
 const maxMessageBytes = 16 << 10
 
 type Server struct {
-	cfg    config.Config
-	store  store.Repository
-	hub    *hub
-	logger *slog.Logger
+	cfg     config.Config
+	store   store.Repository
+	hub     *hub
+	pairing *pairingStore
+	logger  *slog.Logger
 }
 
 type client struct {
 	conn                     *websocket.Conn
 	roomID, userID, clientID string
+	readOnly                 bool
 	send                     chan []byte
 	cancel                   context.CancelFunc
 	lastSequence             uint64
 }
 
 func NewServer(cfg config.Config, repository store.Repository, logger *slog.Logger) *Server {
-	if cfg.StatusTTL <= 0 {
-		cfg.StatusTTL = 15 * time.Minute
-	}
-	return &Server{cfg: cfg, store: repository, hub: newHub(), logger: logger}
+	return &Server{cfg: cfg, store: repository, hub: newHub(), pairing: newPairingStore(), logger: logger}
 }
 
+func statusExpiresAt(now time.Time, ttl time.Duration) time.Time {
+	if ttl <= 0 {
+		return time.Date(9999, time.December, 31, 23, 59, 59, 999999999, time.UTC)
+	}
+	return now.Add(ttl)
+}
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -50,6 +55,8 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	mux.HandleFunc("GET /api/v1/rooms/{roomID}/status/{userID}", s.getStatus)
+	mux.HandleFunc("POST /api/v1/pairing", s.createPairing)
+	mux.HandleFunc("POST /api/v1/pairing/claim", s.claimPairing)
 	mux.HandleFunc("GET /api/v1/ws", s.websocket)
 	return s.recover(s.cors(mux))
 }
@@ -91,7 +98,15 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := hello.UserID
-	if s.cfg.AllowAnonymous {
+	readOnly := false
+	if grant, ok := s.pairing.lookup(hello.Token, time.Now().UTC()); ok {
+		if hello.RoomID != grant.RoomID || (hello.UserID != "" && hello.UserID != grant.UserID) {
+			conn.Close(websocket.StatusPolicyViolation, "pairing scope mismatch")
+			return
+		}
+		userID = grant.UserID
+		readOnly = true
+	} else if s.cfg.AllowAnonymous {
 		if !validID(userID) {
 			conn.Close(websocket.StatusPolicyViolation, "userId required")
 			return
@@ -103,11 +118,13 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := s.store.AuthorizeRoom(ctx, userID, hello.RoomID); err != nil {
-		conn.Close(websocket.StatusPolicyViolation, "room access denied")
-		return
+	if !s.cfg.AllowAnonymous {
+		if err := s.store.AuthorizeRoom(ctx, userID, hello.RoomID); err != nil {
+			conn.Close(websocket.StatusPolicyViolation, "room access denied")
+			return
+		}
 	}
-	c.roomID, c.userID, c.clientID = hello.RoomID, userID, hello.ClientID
+	c.roomID, c.userID, c.clientID, c.readOnly = hello.RoomID, userID, hello.ClientID, readOnly
 	s.hub.add(c)
 	ack, _ := json.Marshal(outgoingMessage{Type: "server.ready"})
 	c.send <- ack
@@ -135,6 +152,10 @@ func (s *Server) readLoop(ctx context.Context, c *client) {
 			s.sendError(c, "unknown_type", "unsupported message type")
 			continue
 		}
+		if c.readOnly {
+			s.sendError(c, "read_only", "paired clients cannot publish status")
+			continue
+		}
 		var incoming recognitionMessage
 		if decodeStrict(data, &incoming) != nil {
 			s.sendError(c, "invalid_message", "invalid recognition.update")
@@ -142,7 +163,7 @@ func (s *Server) readLoop(ctx context.Context, c *client) {
 		}
 		now := time.Now().UTC()
 		state := domain.State{RoomID: c.roomID, UserID: c.userID, ClientID: c.clientID, Sequence: incoming.Sequence,
-			CapturedAt: incoming.CapturedAt, ReceivedAt: now, ExpiresAt: now.Add(s.cfg.StatusTTL), Status: incoming.Status, Hand: incoming.Hand, Face: incoming.Face, Source: incoming.Source}
+			CapturedAt: incoming.CapturedAt, ReceivedAt: now, ExpiresAt: statusExpiresAt(now, s.cfg.StatusTTL), Status: incoming.Status, Hand: incoming.Hand, Face: incoming.Face, Source: incoming.Source}
 		if err := state.Validate(now); err != nil {
 			s.sendError(c, "validation_failed", err.Error())
 			continue
@@ -200,9 +221,14 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid room or user id"})
 		return
 	}
-	if !s.cfg.AllowAnonymous {
-		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || token == "" {
+	token, _ := bearerToken(r.Header.Get("Authorization"))
+	if grant, ok := s.pairing.lookup(token, time.Now().UTC()); ok {
+		if grant.RoomID != roomID || grant.UserID != userID {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid pairing token"})
+			return
+		}
+	} else if !s.cfg.AllowAnonymous {
+		if token == "" {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
 			return
 		}
@@ -226,6 +252,88 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, state)
+}
+
+func (s *Server) createPairing(w http.ResponseWriter, r *http.Request) {
+	token, authenticated := bearerToken(r.Header.Get("Authorization"))
+	var request struct {
+		RoomID string `json:"roomId"`
+		UserID string `json:"userId"`
+	}
+	if decodeStrictReader(r, &request) != nil || !validID(request.RoomID) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid roomId"})
+		return
+	}
+	userID := ""
+	if authenticated && token != "" {
+		var err error
+		userID, err = s.store.Authenticate(r.Context(), token)
+		if err != nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+			return
+		}
+		if err := s.store.AuthorizeRoom(r.Context(), userID, request.RoomID); err != nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "room access denied"})
+			return
+		}
+	} else {
+		if !s.cfg.AllowAnonymous || !validID(request.UserID) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "authentication required"})
+			return
+		}
+		userID = request.UserID
+	}
+	pairingToken, pairingCode, grant, err := s.pairing.issue(request.RoomID, userID, time.Now().UTC())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pairing token unavailable"})
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"token":     pairingToken,
+		"code":      pairingCode,
+		"roomId":    grant.RoomID,
+		"userId":    grant.UserID,
+		"expiresAt": grant.ExpiresAt,
+	})
+}
+
+func (s *Server) claimPairing(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Code string `json:"code"`
+	}
+	if decodeStrictReader(r, &request) != nil || len(normalizePairingCode(request.Code)) != pairingCodeLength {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid pairing code"})
+		return
+	}
+	token, grant, ok := s.pairing.claim(request.Code, time.Now().UTC())
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pairing code is invalid or expired"})
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"token":     token,
+		"roomId":    grant.RoomID,
+		"userId":    grant.UserID,
+		"expiresAt": grant.ExpiresAt,
+	})
+}
+func bearerToken(header string) (string, bool) {
+	token, ok := strings.CutPrefix(header, "Bearer ")
+	return token, ok
+}
+
+func decodeStrictReader(r *http.Request, target any) error {
+	decoder := json.NewDecoder(io.LimitReader(r.Body, maxMessageBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("request must contain exactly one JSON value")
+	}
+	return nil
 }
 
 func decodeStrict(data []byte, target any) error {
@@ -279,6 +387,7 @@ func (s *Server) cors(next http.Handler) http.Handler {
 				}
 				w.Header().Set("Vary", "Origin")
 				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 				break
 			}
 		}

@@ -119,7 +119,7 @@ go run ./cmd/server
 | `ALLOW_ANONYMOUS` | ローカル開発時のみ`true` |
 | `SUPABASE_URL` | Supabase Project URL |
 | `SUPABASE_SECRET_KEY` | サーバー専用Secret key |
-| `STATUS_TTL` | 最終状態の有効期間。既定値`15m`、最大`24h` |
+| `STATUS_TTL` | 最終状態の有効期間。`0`（既定値）は手動変更まで維持、指定時は最大`24h` |
 
 Secret keyをReactへ含めてはいけません。Reactが使うのはSupabaseのpublishable keyとユーザーのaccess tokenだけです。
 
