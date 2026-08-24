@@ -18,9 +18,9 @@ type Config struct {
 }
 
 func FromEnv() (Config, error) {
-	statusTTL, err := time.ParseDuration(envOr("STATUS_TTL", "15m"))
-	if err != nil || statusTTL <= 0 || statusTTL > 24*time.Hour {
-		return Config{}, errors.New("STATUS_TTL must be a duration between 1ns and 24h")
+	statusTTL, err := time.ParseDuration(envOr("STATUS_TTL", "0"))
+	if err != nil || statusTTL < 0 || statusTTL > 24*time.Hour {
+		return Config{}, errors.New("STATUS_TTL must be 0 (no expiry) or a duration up to 24h")
 	}
 	cfg := Config{
 		Port:              envOr("PORT", "8080"),

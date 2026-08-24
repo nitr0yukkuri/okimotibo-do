@@ -273,7 +273,7 @@ input {
   color: #0076b3;
 }
 
-.camera-modal-backdrop {
+.modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 1000;
@@ -284,10 +284,8 @@ input {
   background-color: rgba(0, 0, 0, 0.4);
 }
 
-.camera-modal {
+.modal-surface {
   position: relative;
-  display: grid;
-  gap: 20px;
   width: min(90vw, 600px);
   max-height: min(86vh, 720px);
   overflow: auto;
@@ -297,6 +295,11 @@ input {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
   color: #333333;
   text-align: center;
+}
+
+.camera-modal {
+  display: grid;
+  gap: 20px;
 }
 
 .camera-modal-header {
@@ -334,8 +337,10 @@ input {
 
 .camera-modal-preview {
   display: grid;
+  align-content: center;
   justify-items: center;
   gap: 18px;
+  min-height: clamp(320px, 48vh, 380px);
   padding: 0;
   border-radius: 0;
   background: transparent;
@@ -473,30 +478,6 @@ input {
   display: none;
 }
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background-color: rgba(0, 0, 0, 0.4);
-  z-index: 1000;
-}
-
-.modal-content {
-  position: relative;
-  width: min(90vw, 600px);
-  max-height: min(86vh, 720px);
-  overflow: auto;
-  padding: 30px;
-  border-radius: 20px;
-  background-color: #ffffff;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-  color: #333333;
-  text-align: center;
-}
-
 .modal-close-button {
   position: absolute;
   top: 14px;
@@ -514,36 +495,113 @@ input {
   cursor: pointer;
 }
 
-.modal-description {
-  margin: 20px 0;
+.modal-content h3 {
+  margin: 0 44px 18px;
+  line-height: 1.25;
+}
+
+.modal-content {
+  transform: translateY(20px);
+}
+
+.pairing-open-button {
+  display: block;
+  width: min(100%, 320px);
+  min-height: 46px;
+  margin: 0 auto 22px;
+  border: 0;
+  border-radius: 999px;
+  background: #6bdd67;
+  color: #1d321c;
   font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pairing-open-button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.pairing-modal {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+
+.pairing-modal h3 {
+  margin: 0 44px 4px;
+  line-height: 1.25;
+}
+
+.pairing-qr {
+  display: block;
+  width: min(260px, 72vw);
+  height: auto;
+  padding: 10px;
+  border: 1px solid #e2e2e2;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.pairing-modal-note,
+.pairing-modal-expiry,
+.pairing-modal-error {
+  margin: 0;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.pairing-modal-note {
+  color: #444444;
+}
+
+.pairing-modal-expiry {
+  color: #777777;
+  font-size: 13px;
+}
+
+.pairing-modal-error {
+  color: #c62828;
+}
+
+.modal-description {
+  margin: 0 auto 22px;
+  font-size: 16px;
+  line-height: 1.55;
 }
 
 .modal-guide-container {
-  display: inline-block;
+  display: block;
+  width: min(100%, 500px);
+  margin: 0 auto;
   text-align: left;
 }
 
 .modal-guide-title {
-  margin-bottom: 5px;
+  margin: 0 0 6px;
   color: #4caf50;
+  line-height: 1.4;
 }
 
 .modal-guide-list {
-  margin: 0 0 20px;
+  margin: 0 0 14px;
   padding-left: 20px;
   font-size: 16px;
+  line-height: 1.55;
 }
 
 .modal-guide-note {
-  margin: -15px 0 20px;
+  margin: 0 0 18px;
   color: #666666;
   font-size: 13px;
+  line-height: 1.5;
 }
 
 .modal-status-title {
-  margin-bottom: 5px;
+  margin: 0 0 6px;
   color: #f44336;
+  line-height: 1.4;
 }
 
 .modal-status-list {
@@ -551,6 +609,7 @@ input {
   padding: 0;
   list-style: none;
   font-size: 16px;
+  line-height: 1.55;
 }
 
 .status-red {
@@ -666,6 +725,22 @@ input {
   border-radius: 22px;
 }
 
+@media (min-width: 701px) {
+  .modal-surface {
+    height: min(
+      calc(173px + clamp(320px, 48vh, 380px)),
+      calc(100vh - 48px)
+    );
+  }
+
+  .modal-content {
+    height: min(
+      calc(133px + clamp(320px, 48vh, 380px)),
+      calc(100vh - 48px)
+    );
+  }
+}
+
 @media (max-width: 700px) {
   .board {
     grid-template-rows: 76px 1fr;
@@ -741,4 +816,15 @@ input {
     min-height: 54px;
     font-size: 19px;
   }
+}
+
+.pairing-code {
+  margin: 0;
+  padding: 8px 18px;
+  border-radius: 10px;
+  background: #f1f8ef;
+  color: #1d321c;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: .18em;
 }

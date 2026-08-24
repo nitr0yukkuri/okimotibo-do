@@ -31,7 +31,11 @@ export function useStateRecognition(
     const emotion = optionsRef.current.emotion ? new EmotionApiClient(optionsRef.current.emotion) : undefined;
     const socket = optionsRef.current.socket ? new StateSocket(optionsRef.current.socket) : undefined;
     let stream: MediaStream | undefined;
-    let animationFrame = 0;
+    let animationFrame: number | undefined;
+    let backgroundTimer: number | undefined;
+    let framePending = false;
+    let stopScheduler: (() => void) | undefined;
+    const backgroundIntervalMs = Math.max(500, optionsRef.current.recognizer?.inferenceIntervalMs ?? 100);
     let cancelled = false;
     let lastHandAt = 0;
     let emotionErrorReported = false;
@@ -67,7 +71,7 @@ export function useStateRecognition(
         return;
       }
       socket?.connect();
-      const loop = (timestamp: number) => {
+      const processFrame = (timestamp: number) => {
         const result = recognizer.recognize(video, timestamp);
         if (result) {
           lastHandAt = Date.now();
@@ -96,16 +100,66 @@ export function useStateRecognition(
             window.dispatchEvent(new CustomEvent("emotion.error", { detail: error }));
           });
         }
-        animationFrame = requestAnimationFrame(loop);
       };
-      animationFrame = requestAnimationFrame(loop);
+
+      const scheduleNext = () => {
+        if (cancelled) return;
+        // requestAnimationFrame is paused in hidden tabs. A bounded timer is
+        // a best-effort fallback while Chrome keeps the camera page running.
+        if (document.hidden) {
+          if (backgroundTimer === undefined) {
+            backgroundTimer = window.setTimeout(() => {
+              backgroundTimer = undefined;
+              processFrame(performance.now());
+              scheduleNext();
+            }, backgroundIntervalMs);
+          }
+          return;
+        }
+        if (framePending) return;
+        framePending = true;
+        animationFrame = window.requestAnimationFrame((timestamp) => {
+          framePending = false;
+          animationFrame = undefined;
+          processFrame(timestamp);
+          scheduleNext();
+        });
+      };
+
+      const handleVisibilityChange = () => {
+        if (document.hidden) {
+          if (animationFrame !== undefined) {
+            window.cancelAnimationFrame(animationFrame);
+            animationFrame = undefined;
+            framePending = false;
+          }
+          scheduleNext();
+          return;
+        }
+        if (backgroundTimer !== undefined) {
+          window.clearTimeout(backgroundTimer);
+          backgroundTimer = undefined;
+        }
+        scheduleNext();
+      };
+
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      stopScheduler = () => {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        if (animationFrame !== undefined) window.cancelAnimationFrame(animationFrame);
+        if (backgroundTimer !== undefined) window.clearTimeout(backgroundTimer);
+        animationFrame = undefined;
+        backgroundTimer = undefined;
+        framePending = false;
+      };
+      scheduleNext();
     };
     void start().catch((error) => window.dispatchEvent(new CustomEvent("recognition.error", { detail: error })));
 
     return () => {
       cancelled = true;
       optionsRef.current.onStream?.(undefined);
-      cancelAnimationFrame(animationFrame);
+      stopScheduler?.();
       socket?.close();
       recognizer.close();
       face?.close();

@@ -27,4 +27,30 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        ws: true,
+        configure: (proxy) => {
+          proxy.on("proxyReqWs", (request) => {
+            request.setHeader("origin", "http://127.0.0.1:5173");
+          });
+        },
+      },
+    },
+  },
+  preview: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        ws: true,
+        configure: (proxy) => {
+          proxy.on("proxyReqWs", (request) => {
+            request.setHeader("origin", "http://127.0.0.1:5173");
+          });
+        },
+      },
+    },
+  },
 });

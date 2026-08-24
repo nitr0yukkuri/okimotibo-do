@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { createPortal } from "react-dom";
 import { moodColor, moodLabel, moodOptions, type Mood } from "./mood";
 
@@ -87,6 +87,8 @@ interface StatusPictureInPictureProps {
 export function StatusPictureInPicture({ enabled, mood, onEnabledChange, onMoodChange }: StatusPictureInPictureProps) {
   const [pipWindow, setPipWindow] = useState<Window | null>(null);
   const [isSupported] = useState(() => Boolean(window.documentPictureInPicture));
+  const [isOpening, setIsOpening] = useState(false);
+  const openingRef = useRef(false);
 
   useEffect(() => {
     if (!pipWindow) {
@@ -112,70 +114,77 @@ export function StatusPictureInPicture({ enabled, mood, onEnabledChange, onMoodC
   }, [enabled, pipWindow]);
 
   const openPictureInPicture = async () => {
-    if (!window.documentPictureInPicture) {
+    if (!window.documentPictureInPicture || openingRef.current) {
       return;
     }
 
-    const existingWindow = pipWindow && !pipWindow.closed
-      ? pipWindow
-      : window.documentPictureInPicture.window;
-    if (existingWindow && !existingWindow.closed) {
-      if (existingWindow !== pipWindow) setPipWindow(existingWindow);
-      existingWindow.focus();
-      onEnabledChange(true);
-      return;
-    }
-
-    const nextWindow = await window.documentPictureInPicture.requestWindow({
-      width: pipWidth,
-      height: pipCollapsedHeight,
-    });
-
+    openingRef.current = true;
+    setIsOpening(true);
     try {
-      nextWindow.moveTo(window.screen.availWidth - pipWidth, 0);
-    } catch {
-      // Some browsers decide Picture-in-Picture placement themselves.
-    }
-
-    nextWindow.document.body.innerHTML = "";
-    nextWindow.document.title = "おきもちミニ表示";
-
-    const baseStyle = nextWindow.document.createElement("style");
-    baseStyle.textContent = `
-      html, body, #pip-root {
-        width: 100%;
-        min-width: 0;
-        height: 100%;
-        margin: 0;
-        overflow: hidden;
+      const existingWindow = pipWindow && !pipWindow.closed
+        ? pipWindow
+        : window.documentPictureInPicture.window;
+      if (existingWindow && !existingWindow.closed) {
+        if (existingWindow !== pipWindow) setPipWindow(existingWindow);
+        existingWindow.focus();
+        onEnabledChange(true);
+        return;
       }
-    `;
-    nextWindow.document.head.appendChild(baseStyle);
 
-    Array.from(document.styleSheets).forEach((styleSheet) => {
+      const nextWindow = await window.documentPictureInPicture.requestWindow({
+        width: pipWidth,
+        height: pipCollapsedHeight,
+      });
+
       try {
-        const style = nextWindow.document.createElement("style");
-        style.textContent = Array.from(styleSheet.cssRules)
-          .map((rule) => rule.cssText)
-          .join("\n");
-        nextWindow.document.head.appendChild(style);
+        nextWindow.moveTo(window.screen.availWidth - pipWidth, 0);
       } catch {
-        if (!styleSheet.href) {
-          return;
-        }
-
-        const link = nextWindow.document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = styleSheet.href;
-        nextWindow.document.head.appendChild(link);
+        // Some browsers decide Picture-in-Picture placement themselves.
       }
-    });
 
-    const root = nextWindow.document.createElement("div");
-    root.id = "pip-root";
-    nextWindow.document.body.appendChild(root);
-    setPipWindow(nextWindow);
-    onEnabledChange(true);
+      nextWindow.document.body.innerHTML = "";
+      nextWindow.document.title = "おきもちミニ表示";
+
+      const baseStyle = nextWindow.document.createElement("style");
+      baseStyle.textContent = `
+        html, body, #pip-root {
+          width: 100%;
+          min-width: 0;
+          height: 100%;
+          margin: 0;
+          overflow: hidden;
+        }
+      `;
+      nextWindow.document.head.appendChild(baseStyle);
+
+      Array.from(document.styleSheets).forEach((styleSheet) => {
+        try {
+          const style = nextWindow.document.createElement("style");
+          style.textContent = Array.from(styleSheet.cssRules)
+            .map((rule) => rule.cssText)
+            .join("\n");
+          nextWindow.document.head.appendChild(style);
+        } catch {
+          if (!styleSheet.href) {
+            return;
+          }
+
+          const link = nextWindow.document.createElement("link");
+          link.rel = "stylesheet";
+          link.href = styleSheet.href;
+          nextWindow.document.head.appendChild(link);
+        }
+      });
+
+      const root = nextWindow.document.createElement("div");
+      root.id = "pip-root";
+      nextWindow.document.body.appendChild(root);
+      setPipWindow(nextWindow);
+      onEnabledChange(true);
+    } finally {
+      openingRef.current = false;
+      setIsOpening(false);
+    }
   };
 
   const handleToggle = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -197,7 +206,7 @@ export function StatusPictureInPicture({ enabled, mood, onEnabledChange, onMoodC
     <>
       <label className="toggle-row">
         <span>ステータスを常時画面に表示</span>
-        <input type="checkbox" checked={enabled} disabled={!isSupported} onChange={handleToggle} />
+        <input type="checkbox" checked={enabled} disabled={!isSupported || isOpening} onChange={handleToggle} />
       </label>
       {pipWindow &&
         createPortal(

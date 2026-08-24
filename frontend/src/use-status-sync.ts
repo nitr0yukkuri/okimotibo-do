@@ -57,8 +57,15 @@ export function useStatusSync(options?: StatusSyncOptions): { status: Mood; send
     });
 
     socket.connect();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      socket.resume();
+      void fetchCurrentStatus();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelled = true;
       socket.close();
       socketRef.current = undefined;

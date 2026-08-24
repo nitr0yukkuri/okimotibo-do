@@ -21,6 +21,7 @@ const PINKY_TIP = 20;
 export interface GestureClassification {
   gesture: Gesture;
   confidence: number;
+  isFist?: boolean;
 }
 
 function distance(a: Landmark, b: Landmark): number {
@@ -73,18 +74,34 @@ export function classifyLandmarks(points: Landmark[]): GestureClassification {
     return { gesture: "shaka", confidence: 0.88 };
   }
 
+  if (indexFolded && middleFolded && ringFolded && pinkyFolded && thumbIsNearPalm(points, scale)) {
+    return { gesture: "unknown", confidence: 0, isFist: true };
+  }
+
   if (!(thumb && indexFolded && middleFolded && ringFolded && pinkyFolded)) {
     return { gesture: "unknown", confidence: 0 };
   }
 
-  const thumbVectorY = points[THUMB_TIP].y - points[THUMB_CMC].y;
-  const verticality = Math.abs(thumbVectorY) / Math.max(distance(points[THUMB_TIP], points[THUMB_CMC]), 1e-9);
-  if (verticality < 0.55) {
+  const thumbVector = {
+    x: points[THUMB_TIP].x - points[THUMB_CMC].x,
+    y: points[THUMB_TIP].y - points[THUMB_CMC].y,
+    z: points[THUMB_TIP].z - points[THUMB_CMC].z,
+  };
+  const palmAxis = {
+    x: points[MIDDLE_MCP].x - points[WRIST].x,
+    y: points[MIDDLE_MCP].y - points[WRIST].y,
+    z: points[MIDDLE_MCP].z - points[WRIST].z,
+  };
+  const thumbLength = Math.hypot(thumbVector.x, thumbVector.y, thumbVector.z);
+  const palmLength = Math.hypot(palmAxis.x, palmAxis.y, palmAxis.z);
+  const alignment = (thumbVector.x * palmAxis.x + thumbVector.y * palmAxis.y + thumbVector.z * palmAxis.z) /
+    Math.max(thumbLength * palmLength, 1e-9);
+  if (Math.abs(alignment) < 0.55) {
     return { gesture: "sideways_thumb", confidence: 0.86 };
   }
 
-  const confidence = Math.min(0.95, 0.72 + verticality * 0.2);
-  return thumbVectorY < 0
+  const confidence = Math.min(0.95, 0.72 + Math.abs(alignment) * 0.2);
+  return alignment > 0
     ? { gesture: "thumb_up", confidence }
     : { gesture: "thumb_down", confidence };
 }
@@ -93,4 +110,12 @@ export function normalizeMediaPipeGesture(name?: string): Gesture {
   if (name === "Thumb_Up") return "thumb_up";
   if (name === "Thumb_Down") return "thumb_down";
   return "unknown";
+}
+
+function thumbIsNearPalm(points: Landmark[], scale: number): boolean {
+  const distanceToPalm = Math.min(
+    distance(points[THUMB_TIP], points[INDEX_MCP]),
+    distance(points[THUMB_TIP], points[MIDDLE_MCP]),
+  );
+  return distanceToPalm <= scale * 0.65;
 }

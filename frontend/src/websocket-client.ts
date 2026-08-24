@@ -92,6 +92,18 @@ export class StateSocket extends EventTarget {
     return true;
   }
 
+  resume(): void {
+    if (this.closed) return;
+    const readyState = this.socket?.readyState;
+    if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING || readyState === WebSocket.CLOSING) return;
+    if (this.reconnectTimer !== undefined) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+    this.reconnectAttempt = 0;
+    this.open();
+  }
+
   close(): void {
     this.closed = true;
     this.ready = false;

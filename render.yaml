@@ -2,6 +2,7 @@ services:
   - type: web
     name: okimochi-api
     runtime: docker
+    plan: free
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /healthz
@@ -15,4 +16,38 @@ services:
       - key: ALLOW_ANONYMOUS
         value: "false"
       - key: STATUS_TTL
-        value: "15m"
+        value: "0"
+
+  - type: web
+    name: okimochi-emotion-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./emotion-api/Dockerfile
+    dockerContext: ./emotion-api
+    healthCheckPath: /healthz
+    envVars:
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: PYFEAT_DEVICE
+        value: "cpu"
+      - key: EMOTION_MIN_CONFIDENCE
+        value: "0.7"
+
+  - type: web
+    name: okimochi-frontend
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./frontend/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_WS_URL
+        sync: false
+      - key: VITE_EMOTION_API_URL
+        sync: false

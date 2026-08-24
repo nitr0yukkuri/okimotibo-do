@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { moodLabel, type Mood } from "./mood";
+import { ModalFrame } from "./ModalFrame";
 
 interface CameraPreviewModalProps {
   mood: Mood;
@@ -69,20 +70,15 @@ export function CameraPreviewModal({ mood, stream, streamError, onClose }: Camer
   }, [onClose]);
 
   return (
-    <div
-      className="camera-modal-backdrop"
-      role="presentation"
-      onMouseDown={(event) => {
+    <ModalFrame
+      backdropClassName="camera-modal-backdrop"
+      contentClassName="camera-modal"
+      labelledBy="camera-modal-title"
+      onBackdropMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
+      onContentMouseDown={(event) => event.stopPropagation()}
     >
-      <section
-        className="camera-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="camera-modal-title"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
         <div className="camera-modal-header">
           <div>
             <p className="camera-modal-kicker">表示プレビュー</p>
@@ -123,7 +119,6 @@ export function CameraPreviewModal({ mood, stream, streamError, onClose }: Camer
         <button className="camera-modal-close" type="button" ref={closeButtonRef} onClick={onClose}>
           閉じる
         </button>
-      </section>
-    </div>
+    </ModalFrame>
   );
 }
