@@ -123,6 +123,12 @@ go run ./cmd/server
 
 Secret keyをReactへ含めてはいけません。Reactが使うのはSupabaseのpublishable keyとユーザーのaccess tokenだけです。
 
+### ペアリング用migration
+
+QR/合言葉ペアリングを本番で使う前に、Supabase SQL Editorまたはmigration実行環境で
+`supabase/migrations/003_pairing_grants.sql`を適用してください。ペアリング情報は
+`service_role`だけが読み書きできるテーブルに保存され、API再起動後も期限内のtokenを照合できます。
+
 ## Python表情API
 
 Py-Feat v2の学習済みモデルは研究・非商用利用向けです。Python 3.11を使用します。

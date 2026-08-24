@@ -23,7 +23,7 @@ type Server struct {
 	cfg     config.Config
 	store   store.Repository
 	hub     *hub
-	pairing *pairingStore
+	pairing store.PairingRepository
 	logger  *slog.Logger
 }
 
@@ -37,7 +37,11 @@ type client struct {
 }
 
 func NewServer(cfg config.Config, repository store.Repository, logger *slog.Logger) *Server {
-	return &Server{cfg: cfg, store: repository, hub: newHub(), pairing: newPairingStore(), logger: logger}
+	pairing, ok := repository.(store.PairingRepository)
+	if !ok {
+		pairing = store.NewMemory()
+	}
+	return &Server{cfg: cfg, store: repository, hub: newHub(), pairing: pairing, logger: logger}
 }
 
 func statusExpiresAt(now time.Time, ttl time.Duration) time.Time {
@@ -99,7 +103,16 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 
 	userID := hello.UserID
 	readOnly := false
-	if grant, ok := s.pairing.lookup(hello.Token, time.Now().UTC()); ok {
+	if isPairingToken(hello.Token) {
+		grant, pairingFound, pairingErr := s.pairing.GetPairing(ctx, hello.Token, time.Now().UTC())
+		if pairingErr != nil {
+			conn.Close(websocket.StatusInternalError, "pairing storage unavailable")
+			return
+		}
+		if !pairingFound {
+			conn.Close(websocket.StatusPolicyViolation, "invalid pairing token")
+			return
+		}
 		if hello.RoomID != grant.RoomID || (hello.UserID != "" && hello.UserID != grant.UserID) {
 			conn.Close(websocket.StatusPolicyViolation, "pairing scope mismatch")
 			return
@@ -222,7 +235,16 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, _ := bearerToken(r.Header.Get("Authorization"))
-	if grant, ok := s.pairing.lookup(token, time.Now().UTC()); ok {
+	if isPairingToken(token) {
+		grant, pairingFound, pairingErr := s.pairing.GetPairing(r.Context(), token, time.Now().UTC())
+		if pairingErr != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "pairing storage unavailable"})
+			return
+		}
+		if !pairingFound {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid pairing token"})
+			return
+		}
 		if grant.RoomID != roomID || grant.UserID != userID {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid pairing token"})
 			return
@@ -283,15 +305,15 @@ func (s *Server) createPairing(w http.ResponseWriter, r *http.Request) {
 		}
 		userID = request.UserID
 	}
-	pairingToken, pairingCode, grant, err := s.pairing.issue(request.RoomID, userID, time.Now().UTC())
+	grant, err := s.pairing.CreatePairing(r.Context(), request.RoomID, userID, time.Now().UTC().Add(pairingTTL))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pairing token unavailable"})
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"token":     pairingToken,
-		"code":      pairingCode,
+		"token":     grant.Token,
+		"code":      grant.Code,
 		"roomId":    grant.RoomID,
 		"userId":    grant.UserID,
 		"expiresAt": grant.ExpiresAt,
@@ -306,14 +328,18 @@ func (s *Server) claimPairing(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid pairing code"})
 		return
 	}
-	token, grant, ok := s.pairing.claim(request.Code, time.Now().UTC())
+	grant, ok, err := s.pairing.ClaimPairing(r.Context(), normalizePairingCode(request.Code), time.Now().UTC())
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "pairing storage unavailable"})
+		return
+	}
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "pairing code is invalid or expired"})
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"token":     token,
+		"token":     grant.Token,
 		"roomId":    grant.RoomID,
 		"userId":    grant.UserID,
 		"expiresAt": grant.ExpiresAt,
@@ -367,6 +393,10 @@ func validID(value string) bool {
 		}
 	}
 	return true
+}
+
+func isPairingToken(value string) bool {
+	return strings.HasPrefix(value, "pair_")
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

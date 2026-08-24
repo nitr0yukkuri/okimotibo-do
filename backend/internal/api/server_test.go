@@ -208,7 +208,13 @@ func TestAnonymousPairingCodeIsSingleUse(t *testing.T) {
 		t.Fatalf("anonymous pairing response: %#v", issued)
 	}
 
-	claimRequest, err := http.NewRequest(http.MethodPost, testServer.URL+"/api/v1/pairing/claim", bytes.NewBufferString(`{"code":"`+issued.Code+`"}`))
+	// A new API server using the same repository must still be able to claim
+	// the code; the production repository is backed by Supabase.
+	restarted := NewServer(config.Config{AllowAnonymous: true, AllowedOrigins: []string{"*"}}, repository, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	restartedServer := httptest.NewServer(restarted.Handler())
+	defer restartedServer.Close()
+
+	claimRequest, err := http.NewRequest(http.MethodPost, restartedServer.URL+"/api/v1/pairing/claim", bytes.NewBufferString(`{"code":"`+issued.Code+`"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,8 +227,27 @@ func TestAnonymousPairingCodeIsSingleUse(t *testing.T) {
 	if claimResponse.StatusCode != http.StatusCreated {
 		t.Fatalf("claim status: %d", claimResponse.StatusCode)
 	}
+	var claimed struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(claimResponse.Body).Decode(&claimed); err != nil || claimed.Token != issued.Token {
+		t.Fatalf("claim response: %#v %v", claimed, err)
+	}
+	statusRequest, err := http.NewRequest(http.MethodGet, restartedServer.URL+"/api/v1/rooms/room-1/status/user-1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statusRequest.Header.Set("Authorization", "Bearer "+claimed.Token)
+	statusResponse, err := http.DefaultClient.Do(statusRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer statusResponse.Body.Close()
+	if statusResponse.StatusCode != http.StatusNotFound {
+		t.Fatalf("restarted pairing status authorization: %d", statusResponse.StatusCode)
+	}
 
-	secondClaim, err := http.NewRequest(http.MethodPost, testServer.URL+"/api/v1/pairing/claim", bytes.NewBufferString(`{"code":"`+issued.Code+`"}`))
+	secondClaim, err := http.NewRequest(http.MethodPost, restartedServer.URL+"/api/v1/pairing/claim", bytes.NewBufferString(`{"code":"`+issued.Code+`"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
