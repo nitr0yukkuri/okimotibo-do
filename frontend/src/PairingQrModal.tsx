@@ -79,7 +79,7 @@ export function PairingQrModal({ sync, roomLoading = false, onClose }: PairingQr
 
     void issuePairing();
     return () => { cancelled = true; };
-  }, [roomLoading, sync]);
+  }, [roomLoading, sync?.roomId, sync?.token, sync?.url, sync?.userId]);
 
   return (
     <ModalFrame
