@@ -49,7 +49,10 @@ export class MediaPipeStateRecognizer {
       throw new Error("minConfidence must be between 0 and 1");
     }
     this.stabilizer = new TemporalStabilizer<Gesture>("unknown", {
+      windowSize: 6,
+      requiredMatches: 4,
       minimumConfidence: this.options.minConfidence,
+      missingGraceMs: 1_000,
     });
   }
 
