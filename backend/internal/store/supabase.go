@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/domain"
@@ -73,7 +74,15 @@ func (s *Supabase) UpsertState(ctx context.Context, state domain.State) error {
 		"p_received_at": state.ReceivedAt, "p_expires_at": state.ExpiresAt, "p_hand": state.Hand, "p_face": state.Face, "p_source": state.Source,
 	}
 	var updated bool
-	if err := s.requestJSON(ctx, http.MethodPost, s.baseURL+"/rest/v1/rpc/upsert_current_status", payload, &updated, ""); err != nil {
+	err := s.requestJSON(ctx, http.MethodPost, s.baseURL+"/rest/v1/rpc/upsert_current_status", payload, &updated, "")
+	if err != nil && state.Source == domain.SourceManual && strings.Contains(err.Error(), "recognition_source") && strings.Contains(err.Error(), "manual") {
+		// Older Supabase projects may not have migration 002 yet. Store manual
+		// updates as the legacy non-recognition source so realtime sync remains
+		// available; the WebSocket broadcast still carries the original source.
+		payload["p_source"] = domain.SourceNone
+		err = s.requestJSON(ctx, http.MethodPost, s.baseURL+"/rest/v1/rpc/upsert_current_status", payload, &updated, "")
+	}
+	if err != nil {
 		return err
 	}
 	if !updated {

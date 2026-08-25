@@ -20,12 +20,14 @@ type Repository interface {
 }
 
 type Memory struct {
-	mu     sync.RWMutex
-	states map[string]domain.State
+	mu           sync.RWMutex
+	states       map[string]domain.State
+	pairings     map[string]PairingGrant
+	pairingCodes map[string]string
 }
 
 func NewMemory() *Memory {
-	return &Memory{states: make(map[string]domain.State)}
+	return &Memory{states: make(map[string]domain.State), pairings: make(map[string]PairingGrant), pairingCodes: make(map[string]string)}
 }
 
 func (m *Memory) Authenticate(_ context.Context, token string) (string, error) {

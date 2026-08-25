@@ -6,12 +6,81 @@ import type { RecognitionResult } from "./types";
 import { StatusDisplay } from "./StatusDisplay";
 import { StatusPictureInPicture } from "./StatusPictureInPicture";
 import { CameraPreviewModal } from "./CameraPreviewModal";
+import { ModalFrame } from "./ModalFrame";
 import { moodLabel, moodOptions, type Mood } from "./mood";
 import { useStatusSync, type StatusSyncOptions } from "./use-status-sync";
+import { getAnonymousIdentity, type PairingSession } from "./pairing";
+import { supabase } from "./supabase-client";
 
 interface AppProps {
   session?: Session;
+  pairing?: PairingSession;
   onLogout: () => void;
+}
+
+function resolveWebSocketUrl(configured: string | undefined): string | undefined {
+  if (!configured) {
+    if (!import.meta.env.DEV) return undefined;
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}/api/v1/ws`;
+  }
+  if (configured.startsWith("ws://")) {
+    try {
+      const target = new URL(configured);
+      const isPrivateHost = target.hostname === "localhost" || target.hostname === "127.0.0.1" ||
+        /^(10|192\.168|172\.(1[6-9]|2\d|3[0-1]))\./.test(target.hostname);
+      if (isPrivateHost) {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        return `${protocol}//${window.location.host}/api/v1/ws`;
+      }
+    } catch {
+      return configured;
+    }
+  }
+  return configured;
+}
+
+interface RoomSelection {
+  roomId?: string;
+  loading: boolean;
+}
+
+function useRoomId(session: Session | undefined, pairing?: PairingSession): RoomSelection {
+  const configuredRoomId = pairing?.roomId ?? import.meta.env.VITE_ROOM_ID;
+  const [discoveredRoomId, setDiscoveredRoomId] = useState<string>();
+  const [loading, setLoading] = useState(!configuredRoomId && !!session && !!supabase);
+
+  useEffect(() => {
+    if (configuredRoomId || !session || !supabase) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    void Promise.resolve(
+      supabase
+        .from("room_members")
+        .select("room_id")
+        .eq("user_id", session.user.id)
+        .limit(1)
+        .then(({ data, error }) => {
+          if (cancelled) return;
+          if (error) {
+            console.warn("Failed to discover a room for the signed-in user.", error);
+          }
+          setDiscoveredRoomId(data?.[0]?.room_id);
+          setLoading(false);
+        }),
+    ).catch((error: unknown) => {
+      if (cancelled) return;
+      console.warn("Failed to discover a room for the signed-in user.", error);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [configuredRoomId, session?.user.id]);
+
+  return { roomId: configuredRoomId ?? discoveredRoomId, loading };
 }
 
 // PC用操作画面
@@ -162,13 +231,12 @@ function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: 
         />
       )}
       {isHelpOpen && (
-        <div className="modal-overlay" onClick={handleOverlayClick}>
-          <div
-            className="modal-content"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="help-dialog-title"
-          >
+        <ModalFrame
+          backdropClassName="modal-overlay"
+          contentClassName="modal-content"
+          labelledBy="help-dialog-title"
+          onBackdropClick={handleOverlayClick}
+        >
             <button
               className="modal-close-button"
               type="button"
@@ -200,14 +268,13 @@ function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: 
                 <li><span className="status-green">・暇</span> おしゃべりしたい時 👍</li>
               </ul>
             </div>
-          </div>
-        </div>
+        </ModalFrame>
       )}
     </main>
   );
 }
 
-export function App({ session, onLogout }: AppProps) {
+export function App({ session, pairing, onLogout }: AppProps) {
   const [isMobile, setIsMobile] = useState(() => {
     const userAgent = window.navigator.userAgent;
     const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
@@ -223,13 +290,13 @@ export function App({ session, onLogout }: AppProps) {
   // PC・スマホの両画面で同じルーム/ユーザーの状態を同期させるための接続設定。
   // ログイン済みならSupabaseセッションの本物のuserId/access_tokenを使い、
   // 未ログイン(ローカル匿名検証)時のみ.envの仮値にフォールバックする。
-  const roomId = import.meta.env.VITE_ROOM_ID;
-  const userId = session?.user.id ?? import.meta.env.VITE_USER_ID;
-  const token = session?.access_token ?? "";
+  const [anonymousIdentity] = useState(() => getAnonymousIdentity());
+  const { roomId: discoveredRoomId } = useRoomId(session, pairing);
+  const roomId = discoveredRoomId ?? (session || pairing ? undefined : import.meta.env.VITE_ROOM_ID ?? anonymousIdentity.roomId);
+  const userId = pairing?.userId ?? session?.user.id ?? import.meta.env.VITE_USER_ID ?? anonymousIdentity.userId;
+  const token = pairing?.token ?? session?.access_token ?? "";
   // 開発時だけlocalhostを既定値にし、本番ではRender等のTLS付きURLを必須にする。
-  const wsUrl = import.meta.env.VITE_WS_URL ?? (
-    import.meta.env.DEV ? "ws://localhost:8080/api/v1/ws" : undefined
-  );
+  const wsUrl = resolveWebSocketUrl(import.meta.env.VITE_WS_URL);
   const sync: StatusSyncOptions | undefined = roomId && userId && wsUrl
     ? {
         // 127.0.0.1は環境(セキュリティソフト等)によって疎通しないことがあるため、既定値はlocalhostにする。
