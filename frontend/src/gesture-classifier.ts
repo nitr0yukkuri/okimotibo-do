@@ -82,26 +82,14 @@ export function classifyLandmarks(points: Landmark[]): GestureClassification {
     return { gesture: "unknown", confidence: 0 };
   }
 
-  const thumbVector = {
-    x: points[THUMB_TIP].x - points[THUMB_CMC].x,
-    y: points[THUMB_TIP].y - points[THUMB_CMC].y,
-    z: points[THUMB_TIP].z - points[THUMB_CMC].z,
-  };
-  const palmAxis = {
-    x: points[MIDDLE_MCP].x - points[WRIST].x,
-    y: points[MIDDLE_MCP].y - points[WRIST].y,
-    z: points[MIDDLE_MCP].z - points[WRIST].z,
-  };
-  const thumbLength = Math.hypot(thumbVector.x, thumbVector.y, thumbVector.z);
-  const palmLength = Math.hypot(palmAxis.x, palmAxis.y, palmAxis.z);
-  const alignment = (thumbVector.x * palmAxis.x + thumbVector.y * palmAxis.y + thumbVector.z * palmAxis.z) /
-    Math.max(thumbLength * palmLength, 1e-9);
-  if (Math.abs(alignment) < 0.55) {
+  const thumbVectorY = points[THUMB_TIP].y - points[THUMB_CMC].y;
+  const verticality = Math.abs(thumbVectorY) / Math.max(distance(points[THUMB_TIP], points[THUMB_CMC]), 1e-9);
+  if (verticality < 0.55) {
     return { gesture: "sideways_thumb", confidence: 0.86 };
   }
 
-  const confidence = Math.min(0.95, 0.72 + Math.abs(alignment) * 0.2);
-  return alignment > 0
+  const confidence = Math.min(0.95, 0.72 + verticality * 0.2);
+  return thumbVectorY < 0
     ? { gesture: "thumb_up", confidence }
     : { gesture: "thumb_down", confidence };
 }
