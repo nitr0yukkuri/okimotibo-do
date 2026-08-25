@@ -6,7 +6,6 @@ import type { RecognitionResult } from "./types";
 import { StatusDisplay } from "./StatusDisplay";
 import { StatusPictureInPicture } from "./StatusPictureInPicture";
 import { CameraPreviewModal } from "./CameraPreviewModal";
-import { PairingQrModal } from "./PairingQrModal";
 import { ModalFrame } from "./ModalFrame";
 import { moodLabel, moodOptions, type Mood } from "./mood";
 import { useStatusSync, type StatusSyncOptions } from "./use-status-sync";
@@ -85,7 +84,7 @@ function useRoomId(session: Session | undefined, pairing?: PairingSession): Room
 }
 
 // PC用操作画面
-function ControlPanel({ sync, roomLoading, onLogout }: { sync?: StatusSyncOptions; roomLoading?: boolean; onLogout: () => void }) {
+function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [cameraStream, setCameraStream] = useState<MediaStream | undefined>();
@@ -94,9 +93,7 @@ function ControlPanel({ sync, roomLoading, onLogout }: { sync?: StatusSyncOption
   const [autoRead, setAutoRead] = useState(true);
   const [cameraPreviewOpen, setCameraPreviewOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isPairingOpen, setIsPairingOpen] = useState(false);
   const [clientId] = useState(() => typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-  const pairingEnabled = sync !== undefined && (sync.token !== "" || import.meta.env.VITE_ANONYMOUS_MODE === "true");
   // カメラ検出専用のソケット(recognition.update送信用)。
   const cameraSocket = sync ? { ...sync, clientId } : undefined;
   // カメラのON/OFFに関わらず常時つながる同期用ソケット。他端末(スマホ等)からの変更もここで受け取る。
@@ -222,18 +219,6 @@ function ControlPanel({ sync, roomLoading, onLogout }: { sync?: StatusSyncOption
           >
             カメラテスト
           </button>
-          {pairingEnabled && (
-            <button
-              className="pairing-open-button"
-              type="button"
-              aria-haspopup="dialog"
-              aria-expanded={isPairingOpen}
-              onClick={() => setIsPairingOpen(true)}
-              disabled={!sync}
-            >
-              スマホ接続
-            </button>
-          )}
         </footer>
       </div>
       <video ref={videoRef} hidden muted playsInline />
@@ -285,7 +270,6 @@ function ControlPanel({ sync, roomLoading, onLogout }: { sync?: StatusSyncOption
             </div>
         </ModalFrame>
       )}
-      {pairingEnabled && isPairingOpen && <PairingQrModal sync={sync} roomLoading={roomLoading} onClose={() => setIsPairingOpen(false)} />}
     </main>
   );
 }
@@ -307,7 +291,7 @@ export function App({ session, pairing, onLogout }: AppProps) {
   // ログイン済みならSupabaseセッションの本物のuserId/access_tokenを使い、
   // 未ログイン(ローカル匿名検証)時のみ.envの仮値にフォールバックする。
   const [anonymousIdentity] = useState(() => getAnonymousIdentity());
-  const { roomId: discoveredRoomId, loading: roomLoading } = useRoomId(session, pairing);
+  const { roomId: discoveredRoomId } = useRoomId(session, pairing);
   const roomId = discoveredRoomId ?? (session || pairing ? undefined : import.meta.env.VITE_ROOM_ID ?? anonymousIdentity.roomId);
   const userId = pairing?.userId ?? session?.user.id ?? import.meta.env.VITE_USER_ID ?? anonymousIdentity.userId;
   const token = pairing?.token ?? session?.access_token ?? "";
@@ -327,5 +311,5 @@ export function App({ session, pairing, onLogout }: AppProps) {
     return <StatusDisplay sync={sync} onLogout={onLogout} />;
   }
 
-  return <ControlPanel sync={sync} roomLoading={roomLoading} onLogout={onLogout} />;
+  return <ControlPanel sync={sync} onLogout={onLogout} />;
 }

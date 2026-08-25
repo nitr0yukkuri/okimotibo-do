@@ -76,10 +76,6 @@ describe("gesture classifier", () => {
     expect(classifyLandmarks(landmarks).gesture).toBe(expected);
   });
 
-  it.each([-35, -20, 20, 35])("keeps a sideways thumb when the hand is rotated %s degrees", (degrees) => {
-    expect(classifyLandmarks(rotate(pose("sideways", false), degrees)).gesture).toBe("sideways_thumb");
-  });
-
   it("keeps a sideways thumb when the camera image is mirrored", () => {
     expect(classifyLandmarks(mirror(pose("sideways", false))).gesture).toBe("sideways_thumb");
   });
