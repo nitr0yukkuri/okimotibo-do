@@ -44,8 +44,8 @@ func NewServer(cfg config.Config, repository store.Repository, logger *slog.Logg
 	return &Server{cfg: cfg, store: repository, hub: newHub(), pairing: pairing, logger: logger}
 }
 
-func statusExpiresAt(now time.Time, ttl time.Duration) time.Time {
-	if ttl <= 0 {
+func statusExpiresAt(now time.Time, ttl time.Duration, source domain.Source) time.Time {
+	if source == domain.SourceManual || ttl <= 0 {
 		return time.Date(9999, time.December, 31, 23, 59, 59, 999999999, time.UTC)
 	}
 	return now.Add(ttl)
@@ -176,7 +176,7 @@ func (s *Server) readLoop(ctx context.Context, c *client) {
 		}
 		now := time.Now().UTC()
 		state := domain.State{RoomID: c.roomID, UserID: c.userID, ClientID: c.clientID, Sequence: incoming.Sequence,
-			CapturedAt: incoming.CapturedAt, ReceivedAt: now, ExpiresAt: statusExpiresAt(now, s.cfg.StatusTTL), Status: incoming.Status, Hand: incoming.Hand, Face: incoming.Face, Source: incoming.Source}
+			CapturedAt: incoming.CapturedAt, ReceivedAt: now, ExpiresAt: statusExpiresAt(now, s.cfg.StatusTTL, incoming.Source), Status: incoming.Status, Hand: incoming.Hand, Face: incoming.Face, Source: incoming.Source}
 		if err := state.Validate(now); err != nil {
 			s.sendError(c, "validation_failed", err.Error())
 			continue

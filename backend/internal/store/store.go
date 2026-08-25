@@ -44,6 +44,9 @@ func (m *Memory) UpsertState(_ context.Context, state domain.State) error {
 	defer m.mu.Unlock()
 	key := state.RoomID + "\x00" + state.UserID
 	current, exists := m.states[key]
+	if exists && current.Source == domain.SourceManual && state.Source != domain.SourceManual && state.Source != domain.SourceHand && current.ExpiresAt.After(state.ReceivedAt) {
+		return ErrStaleState
+	}
 	if exists && (state.CapturedAt.Before(current.CapturedAt) ||
 		(state.CapturedAt.Equal(current.CapturedAt) && state.ReceivedAt.Before(current.ReceivedAt))) {
 		return ErrStaleState

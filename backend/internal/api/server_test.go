@@ -13,9 +13,20 @@ import (
 	"time"
 
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/config"
+	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/domain"
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/store"
 	"github.com/coder/websocket"
 )
+
+func TestManualStatusDoesNotExpire(t *testing.T) {
+	now := time.Now().UTC()
+	if !statusExpiresAt(now, 15*time.Minute, domain.SourceManual).After(now.Add(24 * time.Hour)) {
+		t.Fatal("manual status should not expire")
+	}
+	if !statusExpiresAt(now, 15*time.Minute, domain.SourceHand).Before(now.Add(16 * time.Minute)) {
+		t.Fatal("automatic status should use configured TTL")
+	}
+}
 
 func TestPairingClientIsReadOnly(t *testing.T) {
 	repository := store.NewMemory()

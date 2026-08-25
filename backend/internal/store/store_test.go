@@ -41,3 +41,41 @@ func TestMemoryDoesNotReturnExpiredState(t *testing.T) {
 		t.Fatalf("expected expired state to be hidden, got %v", err)
 	}
 }
+
+func TestMemoryManualStateBlocksFaceButAllowsHand(t *testing.T) {
+	repository := NewMemory()
+	now := time.Now().UTC()
+	manual := domain.State{
+		RoomID: "room-a", UserID: "user-a", ClientID: "manual", Sequence: 1,
+		CapturedAt: now, ReceivedAt: now, ExpiresAt: time.Date(9999, time.December, 31, 23, 59, 59, 999999999, time.UTC),
+		Status: domain.StatusBusy, Source: domain.SourceManual,
+	}
+	if err := repository.UpsertState(context.Background(), manual); err != nil {
+		t.Fatal(err)
+	}
+
+	face := manual
+	face.ClientID = "face"
+	face.Sequence = 2
+	face.CapturedAt = now.Add(time.Second)
+	face.ReceivedAt = now.Add(time.Second)
+	face.Status = domain.StatusAvailable
+	face.Source = domain.SourceFace
+	face.Face = &domain.Face{Expression: "smile", Confidence: .9}
+	if err := repository.UpsertState(context.Background(), face); !errors.Is(err, ErrStaleState) {
+		t.Fatalf("expected manual state to block face state, got %v", err)
+	}
+
+	hand := manual
+	hand.ClientID = "camera"
+	hand.Sequence = 3
+	hand.CapturedAt = now.Add(2 * time.Second)
+	hand.ReceivedAt = now.Add(2 * time.Second)
+	hand.ExpiresAt = now.Add(15 * time.Minute)
+	hand.Status = domain.StatusAvailable
+	hand.Source = domain.SourceHand
+	hand.Hand = &domain.Hand{Gesture: "thumb_up", Confidence: .9}
+	if err := repository.UpsertState(context.Background(), hand); err != nil {
+		t.Fatalf("expected hand state to override manual state, got %v", err)
+	}
+}

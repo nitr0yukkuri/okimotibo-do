@@ -4,6 +4,7 @@ import {
   type NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 import { classifyLandmarks, normalizeMediaPipeGesture } from "./gesture-classifier";
+import { PrimaryHandSelector } from "./hand-selector";
 import { TemporalStabilizer } from "./stabilizer";
 import {
   GESTURE_STATUS,
@@ -31,6 +32,7 @@ function toLandmarks(points: NormalizedLandmark[]): Landmark[] {
 export class MediaPipeStateRecognizer {
   private gestureRecognizer?: GestureRecognizer;
   private readonly stabilizer: TemporalStabilizer<Gesture>;
+  private readonly primaryHandSelector = new PrimaryHandSelector();
   private lastInferenceAt = 0;
   private readonly options: Required<RecognizerOptions>;
 
@@ -62,7 +64,7 @@ export class MediaPipeStateRecognizer {
     this.gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
       baseOptions: { ...baseOptions, modelAssetPath: this.options.gestureModelUrl },
       runningMode: "VIDEO",
-      numHands: 1,
+      numHands: 2,
       minHandDetectionConfidence: 0.6,
       minTrackingConfidence: 0.6,
     });
@@ -75,9 +77,16 @@ export class MediaPipeStateRecognizer {
     this.lastInferenceAt = timestampMs;
 
     const handResult = this.gestureRecognizer.recognizeForVideo(video, timestampMs);
-    const landmarks = handResult.landmarks[0] ? toLandmarks(handResult.landmarks[0]) : [];
+    const allLandmarks = handResult.landmarks.map(toLandmarks);
+    const primaryHandIndex = this.primaryHandSelector.select(allLandmarks, timestampMs);
+    if (primaryHandIndex === undefined) {
+      this.stabilizer.push("unknown", 0, Date.now());
+      return null;
+    }
+
+    const landmarks = allLandmarks[primaryHandIndex] ?? [];
     const custom = classifyLandmarks(landmarks);
-    const canned = handResult.gestures[0]?.[0];
+    const canned = handResult.gestures[primaryHandIndex]?.[0];
     const cannedGesture = normalizeMediaPipeGesture(canned?.categoryName);
     const useCanned = !custom.isFist && cannedGesture !== "unknown" && (canned?.score ?? 0) >= this.options.minConfidence;
     const customGesture = custom.gesture === "shaka" || custom.gesture === "sideways_thumb";
@@ -98,7 +107,7 @@ export class MediaPipeStateRecognizer {
       hand: {
         gesture: stableGesture,
         confidence: rawConfidence,
-        handedness: handResult.handedness[0]?.[0]?.categoryName as "Left" | "Right" | undefined,
+        handedness: handResult.handedness[primaryHandIndex]?.[0]?.categoryName as "Left" | "Right" | undefined,
       },
       face: null,
       status: GESTURE_STATUS[stableGesture],

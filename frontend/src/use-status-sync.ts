@@ -33,14 +33,39 @@ export function useStatusSync(options?: StatusSyncOptions): { status: Mood; send
     const socket = new StateSocket({ ...options, clientId });
     socketRef.current = socket;
 
+    let expiryTimer: number | undefined;
+    const clearExpiryTimer = () => {
+      if (expiryTimer !== undefined) {
+        window.clearTimeout(expiryTimer);
+        expiryTimer = undefined;
+      }
+    };
+    const scheduleExpiry = (expiresAt: unknown) => {
+      clearExpiryTimer();
+      if (typeof expiresAt !== "string") return;
+      const delay = Date.parse(expiresAt) - Date.now();
+      if (!Number.isFinite(delay) || delay > 2_147_000_000) return;
+      expiryTimer = window.setTimeout(() => {
+        expiryTimer = undefined;
+        if (cancelled) return;
+        setStatus("neutral");
+        void fetchCurrentStatus();
+      }, Math.max(0, delay));
+    };
     const fetchCurrentStatus = async () => {
       try {
         const headers: HeadersInit = options.token ? { Authorization: `Bearer ${options.token}` } : {};
         const response = await fetch(statusEndpoint(options), { headers });
+        if (response.status === 404) {
+          clearExpiryTimer();
+          if (!cancelled) setStatus("neutral");
+          return;
+        }
         if (!response.ok || cancelled) return;
         const data = await response.json();
         const mood = toMood(data?.status);
         if (mood && !cancelled) setStatus(mood);
+        scheduleExpiry(data?.expiresAt);
       } catch {
         // 初期取得に失敗しても、後続のstatus.changedブロードキャストで復帰できるため無視する。
       }
@@ -50,10 +75,14 @@ export function useStatusSync(options?: StatusSyncOptions): { status: Mood; send
     // 切断中に見逃した変化をここで取りこぼさないようにする。
     socket.addEventListener("open", () => void fetchCurrentStatus());
     socket.addEventListener("message", (event) => {
-      const data = (event as MessageEvent).data as { type?: string; state?: { userId?: string; status?: string } };
+      const data = (event as MessageEvent).data as {
+        type?: string;
+        state?: { userId?: string; status?: string; expiresAt?: string };
+      };
       if (data?.type !== "status.changed" || data.state?.userId !== options.userId) return;
       const mood = toMood(data.state.status);
       if (mood) setStatus(mood);
+      scheduleExpiry(data.state.expiresAt);
     });
 
     socket.connect();
@@ -67,6 +96,7 @@ export function useStatusSync(options?: StatusSyncOptions): { status: Mood; send
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelled = true;
+      clearExpiryTimer();
       socket.close();
       socketRef.current = undefined;
     };
