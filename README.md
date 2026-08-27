@@ -22,7 +22,6 @@ AI認識はブラウザ内のMediaPipeを基本とし、PC側で確定した状�
 5. 状態はWebSocketの切断・再接続や画面復帰時にも、現在値APIから再取得する。
 
 ログイン済みユーザーはSupabaseのroom_membersから所属ルームを取得します。スマホ画面は現在、表示専用です。スマホから状態を変更する操作は持たせず、PC側のカメラ認識または手動ボタンを状態の主な入力にしています。
-
 ## 状態の定義
 
 | 入力 | ジェスチャー／表情 | APIの状態 | 画面上の意味 |
@@ -59,6 +58,7 @@ AI認識はブラウザ内のMediaPipeを基本とし、PC側で確定した状�
 
 - 同じアカウントが同じルームを開くと、PCとスマホで同じ状態を共有
 - PCのカメラ認識と手動ボタンはWebSocketで配信
+- 手動ボタンの状態は無期限に維持し、顔認識より優先。明示的な手ジェスチャーでは変更できる
 - スマホはWebSocketのstatus.changedを受信し、接続時・再接続時・画面復帰時に現在状態を再取得
 - 同じユーザーの古い状態が新しい状態を上書きしないよう、sequenceとcapturedAtを検証
 
@@ -288,9 +288,9 @@ frontend/.env.localまたはデプロイ環境に設定します。
 | ALLOW_ANONYMOUS | trueはローカル検証用。本番はfalse |
 | SUPABASE_URL | Supabase Project URL |
 | SUPABASE_SECRET_KEY | バックエンド専用のSecret key |
-| STATUS_TTL | 状態の有効期間。0は無期限、最大24時間 |
+| STATUS_TTL | 自動認識状態の有効期間。0は無期限、最大24時間。手動状態は常に無期限 |
 
-STATUS_TTLの既定値は0です。0の場合、状態は手動または新しい認識結果で更新されるまで有効です。render.yamlも0を設定しています。期限を設ける場合は、例として 15m や 1h を指定できます。
+STATUS_TTLの既定値は15mです。自動認識状態が期限切れになると現在状態を返さず、画面側は初期状態（反応可能）に戻ります。手動ボタンで設定した状態は期限切れになりません。PC側の公開接続が切れた場合は、5秒の再接続猶予後に、その接続が公開していた状態だけを削除して表示側を初期状態へ戻します。render.yamlは15mを設定しています。
 
 ## Go API
 
@@ -351,6 +351,7 @@ WebSocketは25秒ごとにpingを送り、フロントエンドは切断時に�
 1. supabase/migrations/001_initial.sql
 2. supabase/migrations/002_manual_recognition_source.sql
 3. supabase/migrations/003_pairing_grants.sql
+4. supabase/migrations/004_manual_priority_and_expiry.sql
 
 主なテーブル:
 

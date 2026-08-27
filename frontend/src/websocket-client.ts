@@ -61,6 +61,11 @@ export class StateSocket extends EventTarget {
     return true;
   }
 
+  resetRecognitionDeduplication(): void {
+    this.lastStatus = "";
+    this.lastSentAt = 0;
+  }
+
   // 手動ボタン操作用。sendRecognitionと違い、連続フレーム向けのheartbeat/重複排除は行わず、
   // クリックのたびに必ず1回送信する（単発の明示的な操作のため）。
   sendManual(status: Mood): boolean {

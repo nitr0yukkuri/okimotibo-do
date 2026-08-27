@@ -27,6 +27,17 @@ func (h *hub) remove(c *client) {
 	}
 }
 
+func (h *hub) hasPublisher(roomID, userID string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for c := range h.rooms[roomID] {
+		if !c.readOnly && c.userID == userID {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *hub) broadcast(roomID string, message []byte) {
 	h.mu.RLock()
 	clients := make([]*client, 0, len(h.rooms[roomID]))

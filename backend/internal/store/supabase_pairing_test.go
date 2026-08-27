@@ -80,3 +80,28 @@ func TestSupabasePairingPersistsAndClaimsOnce(t *testing.T) {
 		t.Fatalf("claim should be single-use: found=%v err=%v", found, err)
 	}
 }
+
+func TestSupabaseClearStateFiltersByClient(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/v1/current_statuses" || r.Method != http.MethodDelete {
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
+		query := r.URL.RawQuery
+		if !strings.Contains(query, "room_id=eq.room-1") || !strings.Contains(query, "user_id=eq.user-1") || !strings.Contains(query, "client_id=eq.client-1") {
+			t.Errorf("clear request is not scoped to the client: %s", query)
+		}
+		if r.Header.Get("Prefer") != "return=representation" {
+			t.Errorf("clear request must request deleted rows: Prefer=%q", r.Header.Get("Prefer"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"room_id":"room-1"}]`))
+	}))
+	defer server.Close()
+
+	repository := NewSupabase(server.URL, "service-key", time.Second)
+	cleared, err := repository.ClearState(context.Background(), "room-1", "user-1", "client-1")
+	if err != nil || !cleared {
+		t.Fatalf("expected Supabase state to be cleared: cleared=%v err=%v", cleared, err)
+	}
+}

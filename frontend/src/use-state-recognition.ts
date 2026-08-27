@@ -39,6 +39,12 @@ export function useStateRecognition(
     let cancelled = false;
     let lastHandAt = 0;
     let emotionErrorReported = false;
+    const handleManualStatus = (event: Event) => {
+      const data = (event as MessageEvent).data as { type?: string; state?: { userId?: string; source?: string } };
+      if (data?.type !== "status.changed" || !data.state || data.state.userId !== optionsRef.current.socket?.userId) return;
+      if (data.state.source === "manual") socket?.resetRecognitionDeduplication();
+    };
+    socket?.addEventListener("message", handleManualStatus);
 
     const start = async () => {
       const cameraPromise = attachCamera(video).then((cameraStream) => {
@@ -160,6 +166,7 @@ export function useStateRecognition(
       cancelled = true;
       optionsRef.current.onStream?.(undefined);
       stopScheduler?.();
+      socket?.removeEventListener("message", handleManualStatus);
       socket?.close();
       recognizer.close();
       face?.close();

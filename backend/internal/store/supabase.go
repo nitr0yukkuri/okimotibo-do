@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/domain"
@@ -75,13 +74,6 @@ func (s *Supabase) UpsertState(ctx context.Context, state domain.State) error {
 	}
 	var updated bool
 	err := s.requestJSON(ctx, http.MethodPost, s.baseURL+"/rest/v1/rpc/upsert_current_status", payload, &updated, "")
-	if err != nil && state.Source == domain.SourceManual && strings.Contains(err.Error(), "recognition_source") && strings.Contains(err.Error(), "manual") {
-		// Older Supabase projects may not have migration 002 yet. Store manual
-		// updates as the legacy non-recognition source so realtime sync remains
-		// available; the WebSocket broadcast still carries the original source.
-		payload["p_source"] = domain.SourceNone
-		err = s.requestJSON(ctx, http.MethodPost, s.baseURL+"/rest/v1/rpc/upsert_current_status", payload, &updated, "")
-	}
 	if err != nil {
 		return err
 	}
@@ -115,6 +107,18 @@ func (s *Supabase) GetState(ctx context.Context, roomID, userID string) (domain.
 	r := rows[0]
 	return domain.State{RoomID: r.RoomID, UserID: r.UserID, ClientID: r.ClientID, Sequence: r.Sequence,
 		Status: r.Status, CapturedAt: r.CapturedAt, ReceivedAt: r.ReceivedAt, ExpiresAt: r.ExpiresAt, Hand: r.Hand, Face: r.Face, Source: r.Source}, nil
+}
+
+func (s *Supabase) ClearState(ctx context.Context, roomID, userID, clientID string) (bool, error) {
+	endpoint := s.baseURL + "/rest/v1/current_statuses?room_id=eq." + url.QueryEscape(roomID) +
+		"&user_id=eq." + url.QueryEscape(userID) + "&client_id=eq." + url.QueryEscape(clientID)
+	var rows []struct {
+		RoomID string `json:"room_id"`
+	}
+	if err := s.requestJSON(ctx, http.MethodDelete, endpoint, nil, &rows, "return=representation"); err != nil {
+		return false, err
+	}
+	return len(rows) > 0, nil
 }
 
 func (s *Supabase) requestJSON(ctx context.Context, method, endpoint string, body any, target any, prefer string) error {

@@ -17,6 +17,7 @@ type Repository interface {
 	AuthorizeRoom(ctx context.Context, userID, roomID string) error
 	UpsertState(ctx context.Context, state domain.State) error
 	GetState(ctx context.Context, roomID, userID string) (domain.State, error)
+	ClearState(ctx context.Context, roomID, userID, clientID string) (bool, error)
 }
 
 type Memory struct {
@@ -44,6 +45,9 @@ func (m *Memory) UpsertState(_ context.Context, state domain.State) error {
 	defer m.mu.Unlock()
 	key := state.RoomID + "\x00" + state.UserID
 	current, exists := m.states[key]
+	if exists && current.Source == domain.SourceManual && state.Source != domain.SourceManual && state.Source != domain.SourceHand && current.ExpiresAt.After(state.ReceivedAt) {
+		return ErrStaleState
+	}
 	if exists && (state.CapturedAt.Before(current.CapturedAt) ||
 		(state.CapturedAt.Equal(current.CapturedAt) && state.ReceivedAt.Before(current.ReceivedAt))) {
 		return ErrStaleState
@@ -63,4 +67,16 @@ func (m *Memory) GetState(_ context.Context, roomID, userID string) (domain.Stat
 		return domain.State{}, ErrNotFound
 	}
 	return state, nil
+}
+
+func (m *Memory) ClearState(_ context.Context, roomID, userID, clientID string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := roomID + "\x00" + userID
+	state, ok := m.states[key]
+	if !ok || state.ClientID != clientID {
+		return false, nil
+	}
+	delete(m.states, key)
+	return true, nil
 }

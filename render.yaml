@@ -16,7 +16,7 @@ services:
       - key: ALLOW_ANONYMOUS
         value: "false"
       - key: STATUS_TTL
-        value: "0"
+        value: "15m"
 
   - type: web
     name: okimochi-emotion-api

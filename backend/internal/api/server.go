@@ -19,6 +19,8 @@ import (
 
 const maxMessageBytes = 16 << 10
 
+const disconnectGrace = 5 * time.Second
+
 type Server struct {
 	cfg     config.Config
 	store   store.Repository
@@ -44,8 +46,8 @@ func NewServer(cfg config.Config, repository store.Repository, logger *slog.Logg
 	return &Server{cfg: cfg, store: repository, hub: newHub(), pairing: pairing, logger: logger}
 }
 
-func statusExpiresAt(now time.Time, ttl time.Duration) time.Time {
-	if ttl <= 0 {
+func statusExpiresAt(now time.Time, ttl time.Duration, source domain.Source) time.Time {
+	if source == domain.SourceManual || ttl <= 0 {
 		return time.Date(9999, time.December, 31, 23, 59, 59, 999999999, time.UTC)
 	}
 	return now.Add(ttl)
@@ -84,6 +86,7 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 		cancel()
 		if c.roomID != "" {
 			s.hub.remove(c)
+			s.scheduleDisconnectedStateClear(c)
 		}
 		conn.Close(websocket.StatusNormalClosure, "")
 	}()
@@ -176,7 +179,7 @@ func (s *Server) readLoop(ctx context.Context, c *client) {
 		}
 		now := time.Now().UTC()
 		state := domain.State{RoomID: c.roomID, UserID: c.userID, ClientID: c.clientID, Sequence: incoming.Sequence,
-			CapturedAt: incoming.CapturedAt, ReceivedAt: now, ExpiresAt: statusExpiresAt(now, s.cfg.StatusTTL), Status: incoming.Status, Hand: incoming.Hand, Face: incoming.Face, Source: incoming.Source}
+			CapturedAt: incoming.CapturedAt, ReceivedAt: now, ExpiresAt: statusExpiresAt(now, s.cfg.StatusTTL, incoming.Source), Status: incoming.Status, Hand: incoming.Hand, Face: incoming.Face, Source: incoming.Source}
 		if err := state.Validate(now); err != nil {
 			s.sendError(c, "validation_failed", err.Error())
 			continue
@@ -198,6 +201,49 @@ func (s *Server) readLoop(ctx context.Context, c *client) {
 		message, _ := json.Marshal(outgoingMessage{Type: "status.changed", State: &state})
 		s.hub.broadcast(c.roomID, message)
 	}
+}
+
+func (s *Server) scheduleDisconnectedStateClear(c *client) {
+	if c.readOnly || c.roomID == "" || c.userID == "" || c.clientID == "" {
+		return
+	}
+	time.AfterFunc(disconnectGrace, func() {
+		if s.hub.hasPublisher(c.roomID, c.userID) {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		current, err := s.store.GetState(ctx, c.roomID, c.userID)
+		if errors.Is(err, store.ErrNotFound) {
+			return
+		}
+		if err != nil {
+			s.logger.Warn("failed to inspect disconnected status", "error", err, "roomId", c.roomID, "userId", c.userID)
+			return
+		}
+		// A publisher may have connected while the database was being read.
+		// Re-check immediately before the conditional delete so a reconnecting
+		// PC is not cleared because of the first check's stale snapshot.
+		if s.hub.hasPublisher(c.roomID, c.userID) {
+			return
+		}
+		// Delete only the state that was current when there were no publishers.
+		// If a new publisher wrote a newer state concurrently, the client_id
+		// predicate prevents this delayed cleanup from deleting it.
+		cleared, err := s.store.ClearState(ctx, c.roomID, c.userID, current.ClientID)
+		if err != nil {
+			s.logger.Warn("failed to clear disconnected status", "error", err, "roomId", c.roomID, "userId", c.userID, "clientId", c.clientID)
+			return
+		}
+		if !cleared {
+			return
+		}
+		message, _ := json.Marshal(outgoingMessage{
+			Type: "status.cleared", RoomID: c.roomID, UserID: c.userID, ClientID: c.clientID,
+			CapturedAt: current.CapturedAt, ReceivedAt: current.ReceivedAt,
+		})
+		s.hub.broadcast(c.roomID, message)
+	})
 }
 
 func (s *Server) writeLoop(ctx context.Context, c *client) {

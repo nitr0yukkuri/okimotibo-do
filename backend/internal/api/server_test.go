@@ -13,9 +13,20 @@ import (
 	"time"
 
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/config"
+	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/domain"
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/store"
 	"github.com/coder/websocket"
 )
+
+func TestManualStatusDoesNotExpire(t *testing.T) {
+	now := time.Now().UTC()
+	if !statusExpiresAt(now, 15*time.Minute, domain.SourceManual).After(now.Add(24 * time.Hour)) {
+		t.Fatal("manual status should not expire")
+	}
+	if !statusExpiresAt(now, 15*time.Minute, domain.SourceHand).Before(now.Add(16 * time.Minute)) {
+		t.Fatal("automatic status should use configured TTL")
+	}
+}
 
 func TestPairingClientIsReadOnly(t *testing.T) {
 	repository := store.NewMemory()
@@ -176,6 +187,86 @@ func TestWebSocketManualRoundTrip(t *testing.T) {
 	if state["source"] != "manual" {
 		t.Fatalf("unexpected source: %#v", state)
 	}
+}
+
+func TestWebSocketDisconnectClearsPublishedState(t *testing.T) {
+	repository := store.NewMemory()
+	server := NewServer(config.Config{AllowAnonymous: true, AllowedOrigins: []string{"*"}}, repository, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	testServer := httptest.NewServer(server.Handler())
+	defer testServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pairingResponse, err := http.Post(
+		testServer.URL+"/api/v1/pairing",
+		"application/json",
+		bytes.NewBufferString(`{"roomId":"room-1","userId":"user-1"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pairingResponse.Body.Close()
+	var pairing struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(pairingResponse.Body).Decode(&pairing); err != nil || pairing.Token == "" {
+		t.Fatalf("pairing response: token=%q err=%v", pairing.Token, err)
+	}
+	observer, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/api/v1/ws", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer observer.CloseNow()
+	observerHello := `{"type":"client.hello","token":"` + pairing.Token + `","roomId":"room-1","clientId":"client-2"}`
+	if err := observer.Write(ctx, websocket.MessageText, []byte(observerHello)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := observer.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/api/v1/ws", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hello := `{"type":"client.hello","token":"","roomId":"room-1","clientId":"client-1","userId":"user-1"}`
+	if err := conn.Write(ctx, websocket.MessageText, []byte(hello)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	update := `{"type":"recognition.update","sequence":1,"capturedAt":"` + time.Now().UTC().Format(time.RFC3339Nano) + `","status":"busy","source":"manual"}`
+	if err := conn.Write(ctx, websocket.MessageText, []byte(update)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := observer.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	conn.CloseNow()
+	eventCtx, eventCancel := context.WithTimeout(context.Background(), disconnectGrace+5*time.Second)
+	defer eventCancel()
+	_, cleared, err := observer.Read(eventCtx)
+	if err != nil || !strings.Contains(string(cleared), `"type":"status.cleared"`) {
+		t.Fatalf("expected status.cleared broadcast: %s %v", cleared, err)
+	}
+
+	deadline := time.Now().Add(disconnectGrace + 2*time.Second)
+	for time.Now().Before(deadline) {
+		response, requestErr := http.Get(testServer.URL + "/api/v1/rooms/room-1/status/user-1")
+		if requestErr == nil {
+			statusCode := response.StatusCode
+			response.Body.Close()
+			if statusCode == http.StatusNotFound {
+				return
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("published state was not cleared after the client disconnected")
 }
 
 func TestAnonymousPairingCodeIsSingleUse(t *testing.T) {
