@@ -79,3 +79,27 @@ func TestMemoryManualStateBlocksFaceButAllowsHand(t *testing.T) {
 		t.Fatalf("expected hand state to override manual state, got %v", err)
 	}
 }
+
+func TestMemoryClearStateOnlyRemovesOwnedClient(t *testing.T) {
+	repository := NewMemory()
+	now := time.Now().UTC()
+	state := domain.State{
+		RoomID: "room-a", UserID: "user-a", ClientID: "client-a", CapturedAt: now,
+		ReceivedAt: now, ExpiresAt: now.Add(time.Minute), Status: domain.StatusBusy,
+	}
+	if err := repository.UpsertState(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	if cleared, err := repository.ClearState(context.Background(), "room-a", "user-a", "client-b"); err != nil || cleared {
+		t.Fatalf("a different client must not clear the state: cleared=%v err=%v", cleared, err)
+	}
+	if _, err := repository.GetState(context.Background(), "room-a", "user-a"); err != nil {
+		t.Fatalf("state was cleared by a different client: %v", err)
+	}
+	if cleared, err := repository.ClearState(context.Background(), "room-a", "user-a", "client-a"); err != nil || !cleared {
+		t.Fatalf("the publishing client should clear the state: cleared=%v err=%v", cleared, err)
+	}
+	if _, err := repository.GetState(context.Background(), "room-a", "user-a"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected cleared state to be missing, got %v", err)
+	}
+}

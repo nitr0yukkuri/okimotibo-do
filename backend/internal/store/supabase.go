@@ -109,6 +109,18 @@ func (s *Supabase) GetState(ctx context.Context, roomID, userID string) (domain.
 		Status: r.Status, CapturedAt: r.CapturedAt, ReceivedAt: r.ReceivedAt, ExpiresAt: r.ExpiresAt, Hand: r.Hand, Face: r.Face, Source: r.Source}, nil
 }
 
+func (s *Supabase) ClearState(ctx context.Context, roomID, userID, clientID string) (bool, error) {
+	endpoint := s.baseURL + "/rest/v1/current_statuses?room_id=eq." + url.QueryEscape(roomID) +
+		"&user_id=eq." + url.QueryEscape(userID) + "&client_id=eq." + url.QueryEscape(clientID)
+	var rows []struct {
+		RoomID string `json:"room_id"`
+	}
+	if err := s.requestJSON(ctx, http.MethodDelete, endpoint, nil, &rows, "return=representation"); err != nil {
+		return false, err
+	}
+	return len(rows) > 0, nil
+}
+
 func (s *Supabase) requestJSON(ctx context.Context, method, endpoint string, body any, target any, prefer string) error {
 	var reader io.Reader
 	if body != nil {

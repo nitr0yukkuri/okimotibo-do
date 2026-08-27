@@ -1,7 +1,8 @@
 -- Existing STATUS_TTL=0 rows must not survive the new default forever.
 update public.current_statuses
 set expires_at = now()
-where expires_at > now() + interval '24 hours';
+where source <> 'manual'
+  and expires_at > now() + interval '24 hours';
 
 create or replace function public.upsert_current_status(
   p_user_id uuid,

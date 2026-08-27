@@ -30,10 +30,15 @@ type recognitionMessage struct {
 }
 
 type outgoingMessage struct {
-	Type    string        `json:"type"`
-	State   *domain.State `json:"state,omitempty"`
-	Code    string        `json:"code,omitempty"`
-	Message string        `json:"message,omitempty"`
+	Type       string        `json:"type"`
+	State      *domain.State `json:"state,omitempty"`
+	RoomID     string        `json:"roomId,omitempty"`
+	UserID     string        `json:"userId,omitempty"`
+	ClientID   string        `json:"clientId,omitempty"`
+	CapturedAt time.Time     `json:"capturedAt,omitempty"`
+	ReceivedAt time.Time     `json:"receivedAt,omitempty"`
+	Code       string        `json:"code,omitempty"`
+	Message    string        `json:"message,omitempty"`
 }
 
 func messageType(data []byte) (string, error) {
