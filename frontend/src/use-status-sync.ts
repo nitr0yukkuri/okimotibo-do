@@ -53,6 +53,7 @@ export function useStatusSync(options?: StatusSyncOptions): { status: Mood; send
     socketRef.current = socket;
 
     let expiryTimer: number | undefined;
+    let activeFetchController: AbortController | undefined;
     const clearExpiryTimer = () => {
       if (expiryTimer !== undefined) {
         window.clearTimeout(expiryTimer);
@@ -83,9 +84,12 @@ export function useStatusSync(options?: StatusSyncOptions): { status: Mood; send
     };
     const fetchCurrentStatus = async () => {
       const requestRevision = syncRevision;
+      activeFetchController?.abort();
+      const controller = new AbortController();
+      activeFetchController = controller;
       try {
         const headers: HeadersInit = options.token ? { Authorization: `Bearer ${options.token}` } : {};
-        const response = await fetch(statusEndpoint(options), { headers });
+        const response = await fetch(statusEndpoint(options), { headers, signal: controller.signal });
         if (cancelled || requestRevision !== syncRevision) return;
         if (response.status === 404) {
           clearExpiryTimer();
@@ -93,12 +97,18 @@ export function useStatusSync(options?: StatusSyncOptions): { status: Mood; send
           if (!cancelled) setStatus("neutral");
           return;
         }
-        if (!response.ok) return;
+        if (!response.ok) {
+          console.warn("Status endpoint returned an error.", response.status);
+          return;
+        }
         const data = await response.json();
         if (cancelled || requestRevision !== syncRevision) return;
         applyState(data);
-      } catch {
-        // 初期取得に失敗しても、後続のstatus.changedブロードキャストで復帰できるため無視する。
+      } catch (reason) {
+        if (cancelled || controller.signal.aborted) return;
+        console.warn("Failed to fetch the current status.", reason);
+      } finally {
+        if (activeFetchController === controller) activeFetchController = undefined;
       }
     };
 
@@ -139,6 +149,7 @@ export function useStatusSync(options?: StatusSyncOptions): { status: Mood; send
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelled = true;
       clearExpiryTimer();
+      activeFetchController?.abort();
       socket.close();
       socketRef.current = undefined;
     };
