@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/config"
@@ -27,6 +28,7 @@ type Server struct {
 	hub     *hub
 	pairing store.PairingRepository
 	logger  *slog.Logger
+	ready   atomic.Bool
 }
 
 type client struct {
@@ -43,7 +45,9 @@ func NewServer(cfg config.Config, repository store.Repository, logger *slog.Logg
 	if !ok {
 		pairing = store.NewMemory()
 	}
-	return &Server{cfg: cfg, store: repository, hub: newHub(), pairing: pairing, logger: logger}
+	server := &Server{cfg: cfg, store: repository, hub: newHub(), pairing: pairing, logger: logger}
+	server.ready.Store(true)
+	return server
 }
 
 func statusExpiresAt(now time.Time, ttl time.Duration, source domain.Source) time.Time {
@@ -58,6 +62,10 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+		if !s.ready.Load() {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "draining"})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 	mux.HandleFunc("GET /api/v1/rooms/{roomID}/status/{userID}", s.getStatus)
@@ -67,7 +75,10 @@ func (s *Server) Handler() http.Handler {
 	return s.recover(s.cors(mux))
 }
 
-func (s *Server) Close() { s.hub.close() }
+func (s *Server) Close() {
+	s.ready.Store(false)
+	s.hub.close()
+}
 
 func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 	if !s.originAllowed(r.Header.Get("Origin")) {

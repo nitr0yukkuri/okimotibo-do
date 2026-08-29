@@ -28,6 +28,31 @@ func TestManualStatusDoesNotExpire(t *testing.T) {
 	}
 }
 
+func TestReadinessFailsWhileServerIsClosing(t *testing.T) {
+	server := NewServer(config.Config{AllowAnonymous: true, AllowedOrigins: []string{"*"}}, store.NewMemory(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	testServer := httptest.NewServer(server.Handler())
+	defer testServer.Close()
+
+	response, err := http.Get(testServer.URL + "/readyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("initial readiness status: %d", response.StatusCode)
+	}
+
+	server.Close()
+	response, err = http.Get(testServer.URL + "/readyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("draining readiness status: %d", response.StatusCode)
+	}
+}
+
 func TestPairingClientIsReadOnly(t *testing.T) {
 	repository := store.NewMemory()
 	server := NewServer(config.Config{AllowAnonymous: true, AllowedOrigins: []string{"*"}}, repository, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -186,6 +211,58 @@ func TestWebSocketManualRoundTrip(t *testing.T) {
 	}
 	if state["source"] != "manual" {
 		t.Fatalf("unexpected source: %#v", state)
+	}
+}
+
+func TestWebSocketManualSequenceMustIncrease(t *testing.T) {
+	repository := store.NewMemory()
+	server := NewServer(config.Config{AllowAnonymous: true, AllowedOrigins: []string{"*"}}, repository, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	testServer := httptest.NewServer(server.Handler())
+	defer testServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/api/v1/ws", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+
+	hello := `{"type":"client.hello","token":"","roomId":"room-1","clientId":"iot-simulator-01","userId":"user-1"}`
+	if err := conn.Write(ctx, websocket.MessageText, []byte(hello)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	capturedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	update := `{"type":"recognition.update","sequence":1,"capturedAt":"` + capturedAt + `","status":"busy","source":"manual"}`
+	if err := conn.Write(ctx, websocket.MessageText, []byte(update)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Write(ctx, websocket.MessageText, []byte(update)); err != nil {
+		t.Fatal(err)
+	}
+	_, rejected, err := conn.Read(ctx)
+	if err != nil || !strings.Contains(string(rejected), `"code":"stale_sequence"`) {
+		t.Fatalf("stale sequence rejection: %s %v", rejected, err)
+	}
+
+	response, err := http.Get(testServer.URL + "/api/v1/rooms/room-1/status/user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var state map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state["status"] != "busy" || state["sequence"] != float64(1) {
+		t.Fatalf("stale update changed state: %#v", state)
 	}
 }
 
