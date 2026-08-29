@@ -27,6 +27,8 @@ export class StateSocket extends EventTarget {
   }
 
   connect(): void {
+    const readyState = this.socket?.readyState;
+    if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING || readyState === WebSocket.CLOSING) return;
     this.closed = false;
     this.open();
   }
@@ -115,16 +117,22 @@ export class StateSocket extends EventTarget {
     this.pendingManual = undefined;
     this.lastSentAt = 0;
     if (this.reconnectTimer !== undefined) window.clearTimeout(this.reconnectTimer);
-    this.socket?.close(1000, "client shutdown");
+    this.reconnectTimer = undefined;
+    const socket = this.socket;
+    this.socket = undefined;
+    socket?.close(1000, "client shutdown");
   }
 
   private open(): void {
-    this.socket = new WebSocket(this.options.url);
-    this.socket.addEventListener("open", () => {
+    if (this.closed) return;
+    const socket = new WebSocket(this.options.url);
+    this.socket = socket;
+    socket.addEventListener("open", () => {
+      if (this.socket !== socket || this.closed) return;
       this.reconnectAttempt = 0;
       this.lastStatus = "";
       this.lastSentAt = 0;
-      this.socket?.send(JSON.stringify({
+      socket.send(JSON.stringify({
         type: "client.hello",
         token: this.options.token,
         roomId: this.options.roomId,
@@ -132,7 +140,8 @@ export class StateSocket extends EventTarget {
         userId: this.options.userId,
       }));
     });
-    this.socket.addEventListener("message", (event) => {
+    socket.addEventListener("message", (event) => {
+      if (this.socket !== socket || this.closed) return;
       try {
         const data = JSON.parse(String(event.data));
         if (data?.type === "server.ready") {
@@ -149,17 +158,23 @@ export class StateSocket extends EventTarget {
         this.dispatchEvent(new CustomEvent("protocol.error", { detail: "server sent invalid JSON" }));
       }
     });
-    this.socket.addEventListener("close", () => {
+    socket.addEventListener("close", () => {
+      if (this.socket !== socket) return;
       this.ready = false;
+      this.socket = undefined;
       this.dispatchEvent(new Event("close"));
       if (!this.closed) this.scheduleReconnect();
     });
-    this.socket.addEventListener("error", () => this.socket?.close());
+    socket.addEventListener("error", () => socket.close());
   }
 
   private scheduleReconnect(): void {
+    if (this.closed || this.reconnectTimer !== undefined) return;
     const max = this.options.reconnectMaxMs ?? 30_000;
     const delay = Math.min(1000 * 2 ** this.reconnectAttempt++, max) * (0.8 + Math.random() * 0.4);
-    this.reconnectTimer = window.setTimeout(() => this.open(), delay);
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = undefined;
+      this.open();
+    }, delay);
   }
 }

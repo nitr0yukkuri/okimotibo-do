@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StateSocket } from "./websocket-client";
 
 class FakeWebSocket extends EventTarget {
+  static readonly CONNECTING = 0;
   static readonly OPEN = 1;
+  static readonly CLOSING = 2;
   readonly sent: string[] = [];
   readyState = 0;
 
@@ -85,5 +87,48 @@ describe("StateSocket", () => {
     expect(socket.sendRecognition(result)).toBe(false);
     socket.resetRecognitionDeduplication();
     expect(socket.sendRecognition(result)).toBe(true);
+  });
+
+  it("does not create duplicate connections when connect is called twice", () => {
+    const socket = new StateSocket({
+      url: "ws://localhost:8080/api/v1/ws",
+      token: "",
+      roomId: "room",
+      clientId: "client",
+      userId: "user",
+    });
+
+    socket.connect();
+    const firstConnection = (socket as unknown as { socket: FakeWebSocket }).socket;
+    socket.connect();
+
+    expect((socket as unknown as { socket: FakeWebSocket }).socket).toBe(firstConnection);
+  });
+
+  it("schedules only one reconnect after repeated close notifications", () => {
+    const reconnectCallbacks: Array<() => void> = [];
+    const setTimeout = vi.fn((callback: () => void) => {
+      reconnectCallbacks.push(callback);
+      return reconnectCallbacks.length;
+    });
+    vi.stubGlobal("window", { clearTimeout: vi.fn(), setTimeout });
+
+    const socket = new StateSocket({
+      url: "ws://localhost:8080/api/v1/ws",
+      token: "",
+      roomId: "room",
+      clientId: "client",
+      userId: "user",
+    });
+    socket.connect();
+    const connection = (socket as unknown as { socket: FakeWebSocket }).socket;
+    connection.open();
+    connection.announceReady();
+
+    connection.dispatchEvent(new Event("close"));
+    connection.dispatchEvent(new Event("close"));
+
+    expect(setTimeout).toHaveBeenCalledTimes(1);
+    expect(reconnectCallbacks).toHaveLength(1);
   });
 });
