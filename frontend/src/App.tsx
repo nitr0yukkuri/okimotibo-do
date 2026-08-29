@@ -15,7 +15,7 @@ import { supabase } from "./supabase-client";
 interface AppProps {
   session?: Session;
   pairing?: PairingSession;
-  onLogout: () => void;
+  onLogout: () => void | Promise<void>;
 }
 
 function resolveWebSocketUrl(configured: string | undefined): string | undefined {
@@ -84,7 +84,17 @@ function useRoomId(session: Session | undefined, pairing?: PairingSession): Room
 }
 
 // PC用操作画面
-function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: () => void }) {
+function ControlPanel({
+  sync,
+  onLogout,
+  isLoggingOut,
+  logoutError,
+}: {
+  sync?: StatusSyncOptions;
+  onLogout: () => void;
+  isLoggingOut: boolean;
+  logoutError: string | null;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [selectedMood, setSelectedMood] = useState<Mood>("neutral");
   const [cameraStream, setCameraStream] = useState<MediaStream | undefined>();
@@ -161,10 +171,14 @@ function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: 
           ?
         </button>
         <img className="brand-logo" src="/okimochi_logo.png" alt="おきもちぼ〜ど" />
-        <button className="logout-button" type="button" onClick={onLogout}>
-          ログアウト
+        <button className="logout-button" type="button" onClick={onLogout} disabled={isLoggingOut}>
+          {isLoggingOut ? "ログアウト中…" : "ログアウト"}
         </button>
       </header>
+
+      <div className="board-notices" aria-live="polite">
+        {logoutError && <p className="board-notice board-notice-error" role="alert">{logoutError}</p>}
+      </div>
 
       <div className="board-content">
         <section className="talk-panel" aria-labelledby="talk-heading">
@@ -275,6 +289,8 @@ function ControlPanel({ sync, onLogout }: { sync?: StatusSyncOptions; onLogout: 
 }
 
 export function App({ session, pairing, onLogout }: AppProps) {
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(() => {
     const userAgent = window.navigator.userAgent;
     const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
@@ -286,6 +302,19 @@ export function App({ session, pairing, onLogout }: AppProps) {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    setLogoutError(null);
+    try {
+      await onLogout();
+    } catch (error) {
+      console.error("Logout failed.", error);
+      setLogoutError("ログアウトに失敗しました。通信状態を確認して、もう一度お試しください。");
+      setIsLoggingOut(false);
+    }
+  };
 
   // PC・スマホの両画面で同じルーム/ユーザーの状態を同期させるための接続設定。
   // ログイン済みならSupabaseセッションの本物のuserId/access_tokenを使い、
@@ -308,8 +337,8 @@ export function App({ session, pairing, onLogout }: AppProps) {
     : undefined;
 
   if (isMobile) {
-    return <StatusDisplay sync={sync} onLogout={onLogout} />;
+    return <StatusDisplay sync={sync} onLogout={handleLogout} isLoggingOut={isLoggingOut} logoutError={logoutError} />;
   }
 
-  return <ControlPanel sync={sync} onLogout={onLogout} />;
+  return <ControlPanel sync={sync} onLogout={handleLogout} isLoggingOut={isLoggingOut} logoutError={logoutError} />;
 }

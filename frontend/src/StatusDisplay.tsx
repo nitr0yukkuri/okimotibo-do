@@ -5,9 +5,11 @@ import { useStatusSync, type StatusSyncOptions } from "./use-status-sync";
 interface StatusDisplayProps {
   sync?: StatusSyncOptions;
   onLogout: () => void;
+  isLoggingOut: boolean;
+  logoutError: string | null;
 }
 
-export function StatusDisplay({ sync, onLogout }: StatusDisplayProps) {
+export function StatusDisplay({ sync, onLogout, isLoggingOut, logoutError }: StatusDisplayProps) {
   // PC側(ControlPanel)でのカメラ検出・ボタン操作の結果をリアルタイムに受信するだけで、
   // このスマホ画面自体からステータスを変更する操作は持たない。
   const { status: mood } = useStatusSync(sync);
@@ -53,8 +55,9 @@ export function StatusDisplay({ sync, onLogout }: StatusDisplayProps) {
         <h1>{current.title}</h1>
         <p>{current.subtitle}</p>
       </div>
-      <button className="status-logout" type="button" onClick={onLogout}>
-          ログアウト
+      {logoutError && <p className="status-notice status-notice-error" role="alert">{logoutError}</p>}
+      <button className="status-logout" type="button" onClick={onLogout} disabled={isLoggingOut}>
+          {isLoggingOut ? "ログアウト中…" : "ログアウト"}
       </button>
     </div>
   );
