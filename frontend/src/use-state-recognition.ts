@@ -160,7 +160,10 @@ export function useStateRecognition(
       };
       scheduleNext();
     };
-    void start().catch((error) => window.dispatchEvent(new CustomEvent("recognition.error", { detail: error })));
+    void start().catch((error) => {
+      if (cancelled) return;
+      window.dispatchEvent(new CustomEvent("recognition.error", { detail: error }));
+    });
 
     return () => {
       cancelled = true;
