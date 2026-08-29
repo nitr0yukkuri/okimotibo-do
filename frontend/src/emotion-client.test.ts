@@ -63,4 +63,23 @@ describe("EmotionApiClient", () => {
     expect(await client.recognize(video, 3)).toBeNull();
     expect(await client.recognize(video, 4)).toBeNull();
   });
+
+  it("aborts an in-flight prediction when reset is called", async () => {
+    let signal: AbortSignal | undefined;
+    vi.mocked(fetch).mockImplementation((_input, init) => {
+      signal = init?.signal;
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+      });
+    });
+    const client = new EmotionApiClient({ url: "http://localhost:8000", inferenceIntervalMs: 1 });
+    const video = { readyState: 4, videoWidth: 640, videoHeight: 480 } as HTMLVideoElement;
+
+    const pending = client.recognize(video, 1);
+    await vi.waitFor(() => expect(signal).toBeDefined());
+    client.reset();
+
+    expect(signal?.aborted).toBe(true);
+    await expect(pending).rejects.toThrow("Aborted");
+  });
 });
