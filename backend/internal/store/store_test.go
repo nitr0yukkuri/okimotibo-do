@@ -133,3 +133,58 @@ func TestMemoryConditionalClearDoesNotRemoveNewerStateFromSameClient(t *testing.
 		t.Fatalf("newer state was lost: %#v %v", current, err)
 	}
 }
+
+func TestMemoryConditionalLeaseRefreshDoesNotOverwriteNewerState(t *testing.T) {
+	repository := NewMemory()
+	firstReceived := time.Now().UTC()
+	first := domain.State{
+		RoomID: "room-a", UserID: "user-a", ClientID: "client-a", Sequence: 1,
+		CapturedAt: firstReceived, ReceivedAt: firstReceived, ExpiresAt: firstReceived.Add(time.Minute), Status: domain.StatusBusy, Source: domain.SourceManual,
+	}
+	if err := repository.UpsertState(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	newer := first
+	newer.Sequence = 2
+	newer.CapturedAt = firstReceived.Add(time.Second)
+	newer.ReceivedAt = firstReceived.Add(time.Second)
+	newer.Status = domain.StatusAvailable
+	if err := repository.UpsertState(context.Background(), newer); err != nil {
+		t.Fatal(err)
+	}
+
+	refreshed, err := repository.RefreshManualLeaseIfCurrent(context.Background(), first, time.Now().UTC(), time.Now().UTC().Add(time.Minute), time.Now().UTC().Add(2*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshed {
+		t.Fatal("a stale heartbeat must not refresh a newer state")
+	}
+	current, err := repository.GetState(context.Background(), newer.RoomID, newer.UserID)
+	if err != nil || current.Sequence != newer.Sequence || current.Status != newer.Status {
+		t.Fatalf("newer state was overwritten: %#v %v", current, err)
+	}
+}
+
+func TestMemoryConditionalLeaseRefreshUpdatesCurrentManualState(t *testing.T) {
+	repository := NewMemory()
+	firstReceived := time.Now().UTC()
+	first := domain.State{
+		RoomID: "room-a", UserID: "user-a", ClientID: "client-a", Sequence: 1,
+		CapturedAt: firstReceived, ReceivedAt: firstReceived, ExpiresAt: firstReceived.Add(time.Second), Status: domain.StatusBusy, Source: domain.SourceManual,
+	}
+	if err := repository.UpsertState(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	capturedAt := firstReceived.Add(500 * time.Millisecond)
+	receivedAt := firstReceived.Add(500 * time.Millisecond)
+	expiresAt := receivedAt.Add(time.Minute)
+	refreshed, err := repository.RefreshManualLeaseIfCurrent(context.Background(), first, capturedAt, receivedAt, expiresAt)
+	if err != nil || !refreshed {
+		t.Fatalf("expected current manual lease to refresh: refreshed=%v err=%v", refreshed, err)
+	}
+	current, err := repository.GetState(context.Background(), first.RoomID, first.UserID)
+	if err != nil || !current.ReceivedAt.Equal(receivedAt) || !current.ExpiresAt.Equal(expiresAt) || current.Status != first.Status {
+		t.Fatalf("manual lease refresh was not applied: %#v %v", current, err)
+	}
+}

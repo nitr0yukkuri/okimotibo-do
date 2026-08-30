@@ -325,17 +325,24 @@ func (s *Server) handleHeartbeat(ctx context.Context, c *client, data []byte) {
 		s.sendError(c, "lease_owner_mismatch", "only the manual state owner can refresh its lease")
 		return
 	}
-	current.CapturedAt = now
-	current.ReceivedAt = now
-	current.ExpiresAt = expiresAt
-	if err := s.store.UpsertState(ctx, current); err != nil {
-		if errors.Is(err, store.ErrStaleState) {
-			s.sendError(c, "stale_state", "a newer state is already stored")
-			return
-		}
+	refresher, ok := s.store.(store.ConditionalLeaseRefresher)
+	if !ok {
+		s.logger.Error("manual lease refresh is unsupported by the state store")
+		s.sendError(c, "persistence_failed", "lease refresh is not supported")
+		return
+	}
+	refreshed, err := refresher.RefreshManualLeaseIfCurrent(ctx, current, now, now, expiresAt)
+	if err != nil {
 		s.sendError(c, "persistence_failed", "lease was not refreshed")
 		return
 	}
+	if !refreshed {
+		s.sendError(c, "stale_state", "a newer state is already stored")
+		return
+	}
+	current.CapturedAt = now
+	current.ReceivedAt = now
+	current.ExpiresAt = expiresAt
 	s.scheduleStateExpiry(current)
 	message, _ := json.Marshal(outgoingMessage{Type: "status.changed", State: &current})
 	s.broadcast(c.roomID, message)
