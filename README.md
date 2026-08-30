@@ -213,6 +213,45 @@ go run ./cmd/server
 
 匿名モードでは、フロントエンドから送られたuserIdをそのまま検証に使います。本番相当の認証を試す場合はALLOW_ANONYMOUSをfalseにし、SUPABASE_URLとSUPABASE_SECRET_KEYを設定してください。
 
+### ローカルKubernetes（kind）でBackendを検証
+
+Kubernetes検証は、まずBackendを1 Podで起動する最小構成です。現在のHubはプロセス内管理のため、Pub/Subを導入するまでは2 replicasに増やしません。
+
+kind、Docker Desktop、kubectlを用意したうえで、リポジトリ直下から実行します。
+
+~~~powershell
+kind create cluster --name okimochi --config .\k8s\kind-config.yaml
+docker build -t okimochi-backend:dev .\backend
+docker build -t okimochi-emotion-api:dev .\emotion-api
+kind load docker-image okimochi-backend:dev --name okimochi
+kind load docker-image okimochi-emotion-api:dev --name okimochi
+kubectl apply -k .\k8s
+kubectl -n okimochi rollout status deployment/okimochi-backend
+kubectl -n okimochi rollout status deployment/okimochi-emotion-api
+kubectl -n okimochi port-forward service/okimochi-backend 8080:80
+~~~
+
+別ターミナルで死活監視を確認します。
+
+~~~powershell
+Invoke-WebRequest http://127.0.0.1:8080/healthz
+Invoke-WebRequest http://127.0.0.1:8080/readyz
+~~~
+
+kindでは匿名検証を有効にしています。本番相当の認証を試す場合は、`ALLOW_ANONYMOUS`をfalseにし、Secretをmanifestへ直書きせず作成します。
+
+~~~powershell
+kubectl -n okimochi create secret generic okimochi-backend-secret `
+  --from-literal=SUPABASE_URL="https://your-project.supabase.co" `
+  --from-literal=SUPABASE_SECRET_KEY="your-secret-key"
+~~~
+
+クラスタを削除するときは、対象をkindクラスタ名に限定して実行します。
+
+~~~powershell
+kind delete cluster --name okimochi
+~~~
+
 ### 任意のPython表情API
 
 Py-Feat v2 APIを使うときだけ、Python環境を用意します。
@@ -404,6 +443,38 @@ hardware/m5stick/main.inoに、M5StickC Plus2の画面へWebSocketで状態を�
 ~~~
 
 現在のスケッチはローカル検証向けです。Wi-Fi、ホスト、ポート、トークンがソース内のプレースホルダーになっており、TLS付きWebSocketや本番向けの認証設定は別途必要です。M5Stickはアプリの必須構成ではなく、物理表示へ展開するための試作です。
+
+### 実機なしのIoTシミュレーター
+
+実機がない場合は、Backendに付属する開発用シミュレーターでM5Stickの通信を再現できます。シミュレーターはフロントエンドを経由せず、M5Stickと同じWebSocketメッセージをBackendへ送信します。
+
+ローカルBackendを匿名モードで起動します。
+
+~~~powershell
+cd backend
+$env:ALLOW_ANONYMOUS="true"
+$env:SUPABASE_URL=""
+$env:SUPABASE_SECRET_KEY=""
+go run ./cmd/server
+~~~
+
+別のターミナルでシミュレーターを起動します。
+
+~~~powershell
+cd backend
+go run ./cmd/iot-simulator
+~~~
+
+シミュレーターのコマンド:
+
+- `b` / `busy`: 集中中
+- `n` / `neutral`: 話しかけてOK
+- `a` / `available`: 対応可能
+- `d` / `disconnect`: 切断
+- `r` / `reconnect`: 再接続
+- `q` / `quit`: 終了
+
+未接続中に送った状態は最新の1件だけ保留し、再接続時に送信します。Supabase認証を使う環境では、`-token`でアクセストークンを渡してください。本番用の秘密鍵をシミュレーターやM5Stickへ埋め込まないでください。
 
 ## テスト
 

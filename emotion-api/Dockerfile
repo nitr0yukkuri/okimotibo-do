@@ -11,7 +11,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY constraints.txt ./
+RUN pip install --no-cache-dir -c constraints.txt -r requirements.txt
 
 COPY app.py emotion_classifier.py ./
 

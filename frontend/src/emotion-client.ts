@@ -33,6 +33,7 @@ export class EmotionApiClient {
   private lastInferenceAt = 0;
   private requestInFlight = false;
   private stableStatus: Status | null = null;
+  private activeController?: AbortController;
 
   constructor(private readonly options: EmotionApiOptions) {}
 
@@ -81,6 +82,7 @@ export class EmotionApiClient {
   }
 
   reset(): void {
+    this.activeController?.abort();
     this.samples.length = 0;
     this.stableStatus = null;
   }
@@ -122,6 +124,7 @@ export class EmotionApiClient {
 
   private async fetchPrediction(image: Blob): Promise<EmotionApiResponse> {
     const controller = new AbortController();
+    this.activeController = controller;
     const timeout = globalThis.setTimeout(() => controller.abort(), this.options.requestTimeoutMs ?? 30_000);
     try {
       const response = await fetch(`${this.options.url.replace(/\/$/, "")}/v1/emotion`, {
@@ -142,6 +145,7 @@ export class EmotionApiClient {
       return data as EmotionApiResponse;
     } finally {
       globalThis.clearTimeout(timeout);
+      if (this.activeController === controller) this.activeController = undefined;
     }
   }
 }

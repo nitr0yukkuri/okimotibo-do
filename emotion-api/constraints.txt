@@ -1,0 +1,10 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# py-feat supports CPU inference. Pin the CPU wheels explicitly so the
+# Linux image does not resolve the much larger CUDA-enabled PyPI packages.
+torch==2.13.0+cpu
+torchvision==0.28.0+cpu
+
+# xgboost 2.x+ declares a Linux NCCL dependency. Py-Feat only needs the
+# Python package API here, so keep the CPU-only 1.7 line for this image.
+xgboost==1.7.6

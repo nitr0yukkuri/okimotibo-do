@@ -92,7 +92,12 @@ function Root() {
     window.location.assign(url.toString())
   }} />
   return session
-    ? <App session={session} onLogout={() => supabase?.auth.signOut()} />
+    ? <App session={session} onLogout={async () => {
+      if (!supabase) return
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+      setSession(null)
+    }} />
     : <Login />
 }
 

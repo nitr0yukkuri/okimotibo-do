@@ -76,3 +76,23 @@
   bottom: calc(3vh + 12px);
   right: 3vh;
 }
+
+.status-notice {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  z-index: 2;
+  width: min(90vw, 620px);
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+  font-size: 14px;
+  font-weight: 700;
+  transform: translateX(-50%);
+}
+
+.status-notice-error {
+  color: #a11b1b;
+}

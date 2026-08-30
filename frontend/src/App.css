@@ -80,6 +80,36 @@ input {
   transform: scale(1.1) translateY(-5px);
 }
 
+.logout-button:disabled,
+.status-logout:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.board-notices {
+  position: fixed;
+  top: 102px;
+  left: 50%;
+  z-index: 10;
+  width: min(92vw, 620px);
+  transform: translateX(-50%);
+}
+
+.board-notice {
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.board-notice-error {
+  color: #a11b1b;
+}
+
 .board-content {
   display: grid;
   grid-template-rows: 1fr auto;
