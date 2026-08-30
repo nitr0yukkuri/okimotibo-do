@@ -222,9 +222,12 @@ kind、Docker Desktop、kubectlを用意したうえで、リポジトリ直下�
 ~~~powershell
 kind create cluster --name okimochi --config .\k8s\kind-config.yaml
 docker build -t okimochi-backend:dev .\backend
+docker build -t okimochi-emotion-api:dev .\emotion-api
 kind load docker-image okimochi-backend:dev --name okimochi
+kind load docker-image okimochi-emotion-api:dev --name okimochi
 kubectl apply -k .\k8s
 kubectl -n okimochi rollout status deployment/okimochi-backend
+kubectl -n okimochi rollout status deployment/okimochi-emotion-api
 kubectl -n okimochi port-forward service/okimochi-backend 8080:80
 ~~~
 
