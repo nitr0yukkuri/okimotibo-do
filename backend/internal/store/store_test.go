@@ -103,3 +103,33 @@ func TestMemoryClearStateOnlyRemovesOwnedClient(t *testing.T) {
 		t.Fatalf("expected cleared state to be missing, got %v", err)
 	}
 }
+
+func TestMemoryConditionalClearDoesNotRemoveNewerStateFromSameClient(t *testing.T) {
+	repository := NewMemory()
+	firstReceived := time.Now().UTC()
+	first := domain.State{
+		RoomID: "room-a", UserID: "user-a", ClientID: "client-a", Sequence: 1,
+		CapturedAt: firstReceived, ReceivedAt: firstReceived, ExpiresAt: firstReceived.Add(time.Minute), Status: domain.StatusBusy,
+	}
+	if err := repository.UpsertState(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	newer := first
+	newer.Sequence = 2
+	newer.CapturedAt = firstReceived.Add(time.Second)
+	newer.ReceivedAt = firstReceived.Add(time.Second)
+	if err := repository.UpsertState(context.Background(), newer); err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := repository.ClearStateIfCurrent(context.Background(), first.RoomID, first.UserID, first.ClientID, first.Sequence, first.ReceivedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared {
+		t.Fatal("a delayed clear must not remove a newer state from the same client")
+	}
+	current, err := repository.GetState(context.Background(), newer.RoomID, newer.UserID)
+	if err != nil || current.Sequence != newer.Sequence {
+		t.Fatalf("newer state was lost: %#v %v", current, err)
+	}
+}

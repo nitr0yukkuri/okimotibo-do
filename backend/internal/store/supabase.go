@@ -121,6 +121,21 @@ func (s *Supabase) ClearState(ctx context.Context, roomID, userID, clientID stri
 	return len(rows) > 0, nil
 }
 
+func (s *Supabase) ClearStateIfCurrent(ctx context.Context, roomID, userID, clientID string, sequence uint64, receivedAt time.Time) (bool, error) {
+	endpoint := s.baseURL + "/rest/v1/current_statuses?room_id=eq." + url.QueryEscape(roomID) +
+		"&user_id=eq." + url.QueryEscape(userID) +
+		"&client_id=eq." + url.QueryEscape(clientID) +
+		"&sequence=eq." + url.QueryEscape(fmt.Sprint(sequence)) +
+		"&received_at=eq." + url.QueryEscape(receivedAt.Format(time.RFC3339Nano))
+	var rows []struct {
+		RoomID string `json:"room_id"`
+	}
+	if err := s.requestJSON(ctx, http.MethodDelete, endpoint, nil, &rows, "return=representation"); err != nil {
+		return false, err
+	}
+	return len(rows) > 0, nil
+}
+
 func (s *Supabase) requestJSON(ctx context.Context, method, endpoint string, body any, target any, prefer string) error {
 	var reader io.Reader
 	if body != nil {

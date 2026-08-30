@@ -105,3 +105,25 @@ func TestSupabaseClearStateFiltersByClient(t *testing.T) {
 		t.Fatalf("expected Supabase state to be cleared: cleared=%v err=%v", cleared, err)
 	}
 }
+
+func TestSupabaseConditionalClearFiltersVersion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/v1/current_statuses" || r.Method != http.MethodDelete {
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
+		query := r.URL.Query()
+		if query.Get("client_id") != "eq.client-1" || query.Get("sequence") != "eq.7" || query.Get("received_at") != "eq.2026-08-30T00:00:00Z" {
+			t.Errorf("conditional clear filters are missing: %s", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"room_id":"room-1"}]`))
+	}))
+	defer server.Close()
+
+	repository := NewSupabase(server.URL, "service-key", time.Second)
+	cleared, err := repository.ClearStateIfCurrent(context.Background(), "room-1", "user-1", "client-1", 7, time.Date(2026, time.August, 30, 0, 0, 0, 0, time.UTC))
+	if err != nil || !cleared {
+		t.Fatalf("expected conditional Supabase clear: cleared=%v err=%v", cleared, err)
+	}
+}
