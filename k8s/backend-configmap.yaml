@@ -7,3 +7,4 @@ data:
   ALLOWED_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
   ALLOW_ANONYMOUS: "true"
   STATUS_TTL: "15m"
+  REDIS_URL: "redis://okimochi-redis:6379"

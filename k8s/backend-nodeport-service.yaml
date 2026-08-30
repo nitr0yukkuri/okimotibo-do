@@ -1,12 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: okimochi-backend
+  name: okimochi-backend-external
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app.kubernetes.io/name: okimochi-backend
   ports:
     - name: http
       port: 8080
       targetPort: http
+      nodePort: 30080
