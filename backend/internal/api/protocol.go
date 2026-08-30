@@ -20,13 +20,19 @@ type helloMessage struct {
 }
 
 type recognitionMessage struct {
-	Type       string        `json:"type"`
-	Sequence   uint64        `json:"sequence"`
-	CapturedAt time.Time     `json:"capturedAt"`
-	Status     domain.Status `json:"status"`
-	Hand       *domain.Hand  `json:"hand"`
-	Face       *domain.Face  `json:"face"`
-	Source     domain.Source `json:"source"`
+	Type         string        `json:"type"`
+	Sequence     uint64        `json:"sequence"`
+	CapturedAt   time.Time     `json:"capturedAt"`
+	Status       domain.Status `json:"status"`
+	Hand         *domain.Hand  `json:"hand"`
+	Face         *domain.Face  `json:"face"`
+	Source       domain.Source `json:"source"`
+	LeaseSeconds *int          `json:"leaseSeconds"`
+}
+
+type heartbeatMessage struct {
+	Type         string `json:"type"`
+	LeaseSeconds *int   `json:"leaseSeconds"`
 }
 
 type outgoingMessage struct {

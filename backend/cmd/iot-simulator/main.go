@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ type simulatorConfig struct {
 	roomID    string
 	userID    string
 	clientID  string
+	lease     int
 }
 
 type helloMessage struct {
@@ -31,11 +33,12 @@ type helloMessage struct {
 }
 
 type statusUpdate struct {
-	Type       string        `json:"type"`
-	Sequence   uint64        `json:"sequence"`
-	CapturedAt time.Time     `json:"capturedAt"`
-	Status     domain.Status `json:"status"`
-	Source     domain.Source `json:"source"`
+	Type         string        `json:"type"`
+	Sequence     uint64        `json:"sequence"`
+	CapturedAt   time.Time     `json:"capturedAt"`
+	Status       domain.Status `json:"status"`
+	Source       domain.Source `json:"source"`
+	LeaseSeconds int           `json:"leaseSeconds,omitempty"`
 }
 
 type serverMessage struct {
@@ -59,11 +62,12 @@ type connectionEvent struct {
 }
 
 type simulator struct {
-	cfg        simulatorConfig
-	connection *activeConnection
-	sequence   uint64
-	pending    *statusUpdate
-	events     chan connectionEvent
+	cfg         simulatorConfig
+	connection  *activeConnection
+	sequence    uint64
+	pending     *statusUpdate
+	events      chan connectionEvent
+	leaseActive bool
 }
 
 func newSimulator(cfg simulatorConfig) *simulator {
@@ -126,6 +130,7 @@ func (s *simulator) connect() error {
 			return fmt.Errorf("保留中の状態送信に失敗: %w", err)
 		}
 		s.pending = nil
+		s.leaseActive = true
 		fmt.Printf("保留していた状態を送信: %s (#%d)\n", pending.Status, pending.Sequence)
 	}
 	return nil
@@ -175,12 +180,14 @@ func (s *simulator) writeUpdate(update statusUpdate) error {
 func (s *simulator) publish(status domain.Status) {
 	s.sequence++
 	update := statusUpdate{
-		Type:       "recognition.update",
-		Sequence:   s.sequence,
-		CapturedAt: time.Now().UTC(),
-		Status:     status,
-		Source:     domain.SourceManual,
+		Type:         "recognition.update",
+		Sequence:     s.sequence,
+		CapturedAt:   time.Now().UTC(),
+		Status:       status,
+		Source:       domain.SourceManual,
+		LeaseSeconds: s.cfg.lease,
 	}
+	s.leaseActive = true
 
 	if s.connection == nil {
 		s.pending = &update
@@ -196,6 +203,24 @@ func (s *simulator) publish(status domain.Status) {
 	fmt.Printf("送信: %s (#%d)\n", status, update.Sequence)
 }
 
+func (s *simulator) heartbeat() {
+	if s.connection == nil || !s.leaseActive {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	message := struct {
+		Type         string `json:"type"`
+		LeaseSeconds int    `json:"leaseSeconds"`
+	}{Type: "status.heartbeat", LeaseSeconds: s.cfg.lease}
+	if err := writeJSON(ctx, s.connection.conn, message); err != nil {
+		s.disconnect()
+		fmt.Printf("Heartbeat送信失敗: %v\n", err)
+		return
+	}
+	fmt.Printf("Heartbeat送信: lease=%ds\n", s.cfg.lease)
+}
+
 func (s *simulator) run() error {
 	if err := s.connect(); err != nil {
 		fmt.Printf("初回接続できません: %v\n", err)
@@ -205,9 +230,13 @@ func (s *simulator) run() error {
 	printHelp()
 	commands := make(chan string)
 	go readCommands(commands)
+	heartbeatTicker := time.NewTicker(10 * time.Second)
+	defer heartbeatTicker.Stop()
 
 	for {
 		select {
+		case <-heartbeatTicker.C:
+			s.heartbeat()
 		case event := <-s.events:
 			if s.connection == nil || s.connection.conn != event.conn {
 				continue
@@ -350,6 +379,11 @@ func main() {
 	flag.StringVar(&cfg.roomID, "room-id", envOr("IOT_SIMULATOR_ROOM_ID", "room-1"), "room ID")
 	flag.StringVar(&cfg.userID, "user-id", envOr("IOT_SIMULATOR_USER_ID", "user-1"), "user ID for anonymous mode")
 	flag.StringVar(&cfg.clientID, "client-id", envOr("IOT_SIMULATOR_CLIENT_ID", "iot-simulator-01"), "simulated device ID")
+	lease, _ := strconv.Atoi(envOr("IOT_SIMULATOR_LEASE_SECONDS", "30"))
+	if lease < 1 {
+		lease = 30
+	}
+	cfg.lease = lease
 	flag.Parse()
 
 	cfg.serverURL = websocketURL(cfg.serverURL)

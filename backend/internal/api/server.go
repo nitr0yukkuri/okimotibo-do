@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -22,6 +24,12 @@ const maxMessageBytes = 16 << 10
 
 const disconnectGrace = 5 * time.Second
 
+const (
+	defaultManualLease = 30 * time.Second
+	minManualLease     = 1 * time.Second
+	maxManualLease     = 24 * time.Hour
+)
+
 type Server struct {
 	cfg     config.Config
 	store   store.Repository
@@ -29,6 +37,10 @@ type Server struct {
 	pairing store.PairingRepository
 	logger  *slog.Logger
 	ready   atomic.Bool
+	lifeCtx context.Context
+	stop    context.CancelFunc
+	bus     *redisBus
+	origin  string
 }
 
 type client struct {
@@ -45,7 +57,22 @@ func NewServer(cfg config.Config, repository store.Repository, logger *slog.Logg
 	if !ok {
 		pairing = store.NewMemory()
 	}
-	server := &Server{cfg: cfg, store: repository, hub: newHub(), pairing: pairing, logger: logger}
+	lifeCtx, stop := context.WithCancel(context.Background())
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "backend"
+	}
+	origin := fmt.Sprintf("%s-%d", hostname, time.Now().UnixNano())
+	server := &Server{cfg: cfg, store: repository, hub: newHub(), pairing: pairing, logger: logger, lifeCtx: lifeCtx, stop: stop, origin: origin}
+	if cfg.RedisURL != "" {
+		bus, err := newRedisBus(cfg.RedisURL, origin, logger)
+		if err != nil {
+			logger.Error("invalid REDIS_URL; cross-pod events disabled", "error", err)
+		} else {
+			server.bus = bus
+			go bus.run(lifeCtx, server.forwardRemoteEvent)
+		}
+	}
 	server.ready.Store(true)
 	return server
 }
@@ -55,6 +82,20 @@ func statusExpiresAt(now time.Time, ttl time.Duration, source domain.Source) tim
 		return time.Date(9999, time.December, 31, 23, 59, 59, 999999999, time.UTC)
 	}
 	return now.Add(ttl)
+}
+
+func statusExpiresAtWithLease(now time.Time, ttl time.Duration, source domain.Source, leaseSeconds *int) (time.Time, error) {
+	if leaseSeconds == nil {
+		return statusExpiresAt(now, ttl, source), nil
+	}
+	if source != domain.SourceManual {
+		return time.Time{}, errors.New("leaseSeconds is only supported for manual status")
+	}
+	if *leaseSeconds < int(minManualLease/time.Second) || *leaseSeconds > int(maxManualLease/time.Second) {
+		return time.Time{}, errors.New("leaseSeconds must be between 1 and 86400")
+	}
+	lease := time.Duration(*leaseSeconds) * time.Second
+	return now.Add(lease), nil
 }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -77,7 +118,34 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) Close() {
 	s.ready.Store(false)
+	s.stop()
 	s.hub.close()
+	if s.bus != nil {
+		_ = s.bus.close()
+	}
+}
+
+func (s *Server) broadcast(roomID string, message []byte) {
+	s.hub.broadcast(roomID, message)
+	if s.bus == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(s.lifeCtx, 2*time.Second)
+	defer cancel()
+	if err := s.bus.publish(ctx, roomID, message); err != nil && s.lifeCtx.Err() == nil {
+		s.logger.Warn("redis status event publish failed", "error", err, "roomId", roomID)
+	}
+}
+
+func (s *Server) forwardRemoteEvent(event pubsubEnvelope) {
+	var message outgoingMessage
+	if event.Message != nil && json.Unmarshal(event.Message, &message) == nil && message.Type == "status.changed" && message.State != nil {
+		// Every Pod schedules expiry for remote events too. If the publishing
+		// Pod disappears, another Pod can still clear the shared state and
+		// notify its local display clients.
+		s.scheduleStateExpiry(*message.State)
+	}
+	s.hub.broadcast(event.RoomID, event.Message)
 }
 
 func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
@@ -175,6 +243,10 @@ func (s *Server) readLoop(ctx context.Context, c *client) {
 			s.sendError(c, "invalid_json", "message must be valid JSON")
 			continue
 		}
+		if kind == "status.heartbeat" {
+			s.handleHeartbeat(ctx, c, data)
+			continue
+		}
 		if kind != "recognition.update" {
 			s.sendError(c, "unknown_type", "unsupported message type")
 			continue
@@ -189,8 +261,13 @@ func (s *Server) readLoop(ctx context.Context, c *client) {
 			continue
 		}
 		now := time.Now().UTC()
+		expiresAt, expiryErr := statusExpiresAtWithLease(now, s.cfg.StatusTTL, incoming.Source, incoming.LeaseSeconds)
+		if expiryErr != nil {
+			s.sendError(c, "validation_failed", expiryErr.Error())
+			continue
+		}
 		state := domain.State{RoomID: c.roomID, UserID: c.userID, ClientID: c.clientID, Sequence: incoming.Sequence,
-			CapturedAt: incoming.CapturedAt, ReceivedAt: now, ExpiresAt: statusExpiresAt(now, s.cfg.StatusTTL, incoming.Source), Status: incoming.Status, Hand: incoming.Hand, Face: incoming.Face, Source: incoming.Source}
+			CapturedAt: incoming.CapturedAt, ReceivedAt: now, ExpiresAt: expiresAt, Status: incoming.Status, Hand: incoming.Hand, Face: incoming.Face, Source: incoming.Source}
 		if err := state.Validate(now); err != nil {
 			s.sendError(c, "validation_failed", err.Error())
 			continue
@@ -209,9 +286,106 @@ func (s *Server) readLoop(ctx context.Context, c *client) {
 			continue
 		}
 		c.lastSequence = state.Sequence
+		s.scheduleStateExpiry(state)
 		message, _ := json.Marshal(outgoingMessage{Type: "status.changed", State: &state})
-		s.hub.broadcast(c.roomID, message)
+		s.broadcast(c.roomID, message)
 	}
+}
+
+func (s *Server) handleHeartbeat(ctx context.Context, c *client, data []byte) {
+	if c.readOnly {
+		s.sendError(c, "read_only", "paired clients cannot publish status")
+		return
+	}
+	var heartbeat heartbeatMessage
+	if decodeStrict(data, &heartbeat) != nil || heartbeat.Type != "status.heartbeat" {
+		s.sendError(c, "invalid_message", "invalid status.heartbeat")
+		return
+	}
+	leaseSeconds := int(defaultManualLease / time.Second)
+	if heartbeat.LeaseSeconds != nil {
+		leaseSeconds = *heartbeat.LeaseSeconds
+	}
+	now := time.Now().UTC()
+	expiresAt, err := statusExpiresAtWithLease(now, s.cfg.StatusTTL, domain.SourceManual, &leaseSeconds)
+	if err != nil {
+		s.sendError(c, "validation_failed", err.Error())
+		return
+	}
+	current, err := s.store.GetState(ctx, c.roomID, c.userID)
+	if errors.Is(err, store.ErrNotFound) {
+		s.sendError(c, "state_expired", "no active manual lease to refresh")
+		return
+	}
+	if err != nil {
+		s.sendError(c, "persistence_failed", "state was not loaded")
+		return
+	}
+	if current.ClientID != c.clientID || current.Source != domain.SourceManual {
+		s.sendError(c, "lease_owner_mismatch", "only the manual state owner can refresh its lease")
+		return
+	}
+	refresher, ok := s.store.(store.ConditionalLeaseRefresher)
+	if !ok {
+		s.logger.Error("manual lease refresh is unsupported by the state store")
+		s.sendError(c, "persistence_failed", "lease refresh is not supported")
+		return
+	}
+	refreshed, err := refresher.RefreshManualLeaseIfCurrent(ctx, current, now, now, expiresAt)
+	if err != nil {
+		s.sendError(c, "persistence_failed", "lease was not refreshed")
+		return
+	}
+	if !refreshed {
+		s.sendError(c, "stale_state", "a newer state is already stored")
+		return
+	}
+	current.CapturedAt = now
+	current.ReceivedAt = now
+	current.ExpiresAt = expiresAt
+	s.scheduleStateExpiry(current)
+	message, _ := json.Marshal(outgoingMessage{Type: "status.changed", State: &current})
+	s.broadcast(c.roomID, message)
+}
+
+func (s *Server) scheduleStateExpiry(state domain.State) {
+	if state.ExpiresAt.Year() >= 9999 {
+		return
+	}
+	delay := time.Until(state.ExpiresAt)
+	if delay < 0 {
+		delay = 0
+	}
+	time.AfterFunc(delay, func() {
+		if s.lifeCtx.Err() != nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(s.lifeCtx, 5*time.Second)
+		defer cancel()
+		cleared, err := s.clearStateIfCurrent(ctx, state)
+		if err != nil {
+			s.logger.Warn("failed to clear expired status", "error", err, "roomId", state.RoomID, "userId", state.UserID)
+			return
+		}
+		if cleared {
+			s.broadcastCleared(state)
+		}
+	})
+}
+
+func (s *Server) clearStateIfCurrent(ctx context.Context, state domain.State) (bool, error) {
+	if clearer, ok := s.store.(store.ConditionalClearer); ok {
+		return clearer.ClearStateIfCurrent(ctx, state.RoomID, state.UserID, state.ClientID, state.Sequence, state.ReceivedAt)
+	}
+	return s.store.ClearState(ctx, state.RoomID, state.UserID, state.ClientID)
+}
+
+func (s *Server) broadcastCleared(state domain.State) {
+	message, _ := json.Marshal(outgoingMessage{
+		Type: "status.cleared", RoomID: state.RoomID, UserID: state.UserID, ClientID: state.ClientID,
+		CapturedAt: state.CapturedAt, ReceivedAt: state.ReceivedAt,
+	})
+	s.broadcast(state.RoomID, message)
 }
 
 func (s *Server) scheduleDisconnectedStateClear(c *client) {
@@ -239,9 +413,9 @@ func (s *Server) scheduleDisconnectedStateClear(c *client) {
 			return
 		}
 		// Delete only the state that was current when there were no publishers.
-		// If a new publisher wrote a newer state concurrently, the client_id
-		// predicate prevents this delayed cleanup from deleting it.
-		cleared, err := s.store.ClearState(ctx, c.roomID, c.userID, current.ClientID)
+		// The conditional store operation also compares sequence and receivedAt,
+		// so a newer state from the same client cannot be removed by this timer.
+		cleared, err := s.clearStateIfCurrent(ctx, current)
 		if err != nil {
 			s.logger.Warn("failed to clear disconnected status", "error", err, "roomId", c.roomID, "userId", c.userID, "clientId", c.clientID)
 			return
@@ -249,11 +423,7 @@ func (s *Server) scheduleDisconnectedStateClear(c *client) {
 		if !cleared {
 			return
 		}
-		message, _ := json.Marshal(outgoingMessage{
-			Type: "status.cleared", RoomID: c.roomID, UserID: c.userID, ClientID: c.clientID,
-			CapturedAt: current.CapturedAt, ReceivedAt: current.ReceivedAt,
-		})
-		s.hub.broadcast(c.roomID, message)
+		s.broadcastCleared(current)
 	})
 }
 

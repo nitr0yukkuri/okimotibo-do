@@ -20,6 +20,18 @@ type Repository interface {
 	ClearState(ctx context.Context, roomID, userID, clientID string) (bool, error)
 }
 
+// ConditionalClearer prevents a delayed disconnect/expiry job from deleting
+// a newer state that happens to belong to the same client.
+type ConditionalClearer interface {
+	ClearStateIfCurrent(ctx context.Context, roomID, userID, clientID string, sequence uint64, receivedAt time.Time) (bool, error)
+}
+
+// ConditionalLeaseRefresher updates a manual lease only when the snapshot
+// read by the caller is still the current stored state.
+type ConditionalLeaseRefresher interface {
+	RefreshManualLeaseIfCurrent(ctx context.Context, current domain.State, capturedAt, receivedAt, expiresAt time.Time) (bool, error)
+}
+
 type Memory struct {
 	mu           sync.RWMutex
 	states       map[string]domain.State
@@ -78,5 +90,33 @@ func (m *Memory) ClearState(_ context.Context, roomID, userID, clientID string) 
 		return false, nil
 	}
 	delete(m.states, key)
+	return true, nil
+}
+
+func (m *Memory) ClearStateIfCurrent(_ context.Context, roomID, userID, clientID string, sequence uint64, receivedAt time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := roomID + "\x00" + userID
+	state, ok := m.states[key]
+	if !ok || state.ClientID != clientID || state.Sequence != sequence || !state.ReceivedAt.Equal(receivedAt) {
+		return false, nil
+	}
+	delete(m.states, key)
+	return true, nil
+}
+
+func (m *Memory) RefreshManualLeaseIfCurrent(_ context.Context, current domain.State, capturedAt, receivedAt, expiresAt time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := current.RoomID + "\x00" + current.UserID
+	state, ok := m.states[key]
+	if !ok || state.ClientID != current.ClientID || state.Sequence != current.Sequence ||
+		!state.ReceivedAt.Equal(current.ReceivedAt) || state.Source != domain.SourceManual || !state.ExpiresAt.After(receivedAt) {
+		return false, nil
+	}
+	state.CapturedAt = capturedAt
+	state.ReceivedAt = receivedAt
+	state.ExpiresAt = expiresAt
+	m.states[key] = state
 	return true, nil
 }

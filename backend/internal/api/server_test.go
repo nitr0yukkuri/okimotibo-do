@@ -214,6 +214,98 @@ func TestWebSocketManualRoundTrip(t *testing.T) {
 	}
 }
 
+func TestManualLeaseExpiresAndBroadcastsClear(t *testing.T) {
+	repository := store.NewMemory()
+	server := NewServer(config.Config{AllowAnonymous: true, AllowedOrigins: []string{"*"}}, repository, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	testServer := httptest.NewServer(server.Handler())
+	defer testServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/api/v1/ws", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"client.hello","token":"","roomId":"room-1","clientId":"iot-lease-1","userId":"user-1"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	update := `{"type":"recognition.update","sequence":1,"capturedAt":"` + time.Now().UTC().Format(time.RFC3339Nano) + `","status":"busy","source":"manual","leaseSeconds":1}`
+	if err := conn.Write(ctx, websocket.MessageText, []byte(update)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	messageCtx, messageCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer messageCancel()
+	_, cleared, err := conn.Read(messageCtx)
+	if err != nil || !strings.Contains(string(cleared), `"type":"status.cleared"`) {
+		t.Fatalf("expected lease expiry clear: %s %v", cleared, err)
+	}
+	response, err := http.Get(testServer.URL + "/api/v1/rooms/room-1/status/user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("expired lease should not be returned: %d", response.StatusCode)
+	}
+}
+
+func TestManualHeartbeatExtendsLeaseWithoutChangingClientSequence(t *testing.T) {
+	repository := store.NewMemory()
+	server := NewServer(config.Config{AllowAnonymous: true, AllowedOrigins: []string{"*"}}, repository, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	testServer := httptest.NewServer(server.Handler())
+	defer testServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/api/v1/ws", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"client.hello","token":"","roomId":"room-1","clientId":"iot-heartbeat-1","userId":"user-1"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	update := `{"type":"recognition.update","sequence":1,"capturedAt":"` + time.Now().UTC().Format(time.RFC3339Nano) + `","status":"available","source":"manual","leaseSeconds":1}`
+	if err := conn.Write(ctx, websocket.MessageText, []byte(update)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(500 * time.Millisecond)
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"status.heartbeat","leaseSeconds":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, refreshed, err := conn.Read(ctx); err != nil || !strings.Contains(string(refreshed), `"type":"status.changed"`) {
+		t.Fatalf("expected heartbeat status.changed: %s %v", refreshed, err)
+	}
+	time.Sleep(600 * time.Millisecond)
+	response, err := http.Get(testServer.URL + "/api/v1/rooms/room-1/status/user-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("heartbeat should extend the lease: %d", response.StatusCode)
+	}
+	messageCtx, messageCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer messageCancel()
+	_, cleared, err := conn.Read(messageCtx)
+	if err != nil || !strings.Contains(string(cleared), `"type":"status.cleared"`) {
+		t.Fatalf("expected extended lease to eventually clear: %s %v", cleared, err)
+	}
+}
+
 func TestWebSocketManualSequenceMustIncrease(t *testing.T) {
 	repository := store.NewMemory()
 	server := NewServer(config.Config{AllowAnonymous: true, AllowedOrigins: []string{"*"}}, repository, slog.New(slog.NewTextHandler(io.Discard, nil)))

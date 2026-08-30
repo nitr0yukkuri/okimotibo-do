@@ -3,6 +3,8 @@ kind: Kustomization
 namespace: okimochi
 resources:
   - namespace.yaml
+  - redis-service.yaml
+  - redis-deployment.yaml
   - backend-configmap.yaml
   - backend-service.yaml
   - backend-deployment.yaml

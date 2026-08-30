@@ -215,7 +215,7 @@ go run ./cmd/server
 
 ### ローカルKubernetes（kind）でBackendを検証
 
-Kubernetes検証は、まずBackendを1 Podで起動する最小構成です。現在のHubはプロセス内管理のため、Pub/Subを導入するまでは2 replicasに増やしません。
+Kubernetes検証は、Backend、Emotion API、Redis Pub/Subを起動します。Backendの既定値は1 Podです。RedisはPod間イベントの中継だけに使い、状態の正本にはしません。匿名モードのMemory storeはPodごとに分かれるため、2 replicasへ増やすのはSupabaseを接続した本番相当環境、またはPod間イベントだけを確認する実験時に限定してください。
 
 kind、Docker Desktop、kubectlを用意したうえで、リポジトリ直下から実行します。
 
@@ -228,7 +228,7 @@ kind load docker-image okimochi-emotion-api:dev --name okimochi
 kubectl apply -k .\k8s
 kubectl -n okimochi rollout status deployment/okimochi-backend
 kubectl -n okimochi rollout status deployment/okimochi-emotion-api
-kubectl -n okimochi port-forward service/okimochi-backend 8080:80
+kubectl -n okimochi port-forward service/okimochi-backend 8080:8080
 ~~~
 
 別ターミナルで死活監視を確認します。
@@ -252,6 +252,23 @@ kubectl -n okimochi create secret generic okimochi-backend-secret `
 kind delete cluster --name okimochi
 ~~~
 
+実機なしでIoTの長押し・Lease・Heartbeatを確認する場合:
+
+~~~powershell
+cd backend
+go run ./cmd/iot-simulator --url ws://127.0.0.1:8080/api/v1/ws
+~~~
+
+`b` / `n` / `a` で状態を送信し、シミュレータは30秒Leaseを10秒ごとのHeartbeatで延長します。`d`で切断すると、5秒の再接続猶予後に状態が消えます。
+
+LAN上のM5Stickをkindへ接続する場合は、クラスタ作成時に `k8s/kind-config.yaml` のport mappingを有効にし、必要性を確認したうえで次を手動適用します。これは匿名Backendをネットワークへ公開するため、ローカル学習専用です。
+
+~~~powershell
+kubectl apply -f .\k8s\backend-nodeport-service.yaml
+~~~
+
+M5Stickの `WS_HOST` はkindを動かすPCのLAN IP、`WS_PORT` は30080にします。本番ではNodePortではなく、認証・TLS付きのIngressまたはLoadBalancerで `wss://` を使います。
+
 ### 任意のPython表情API
 
 Py-Feat v2 APIを使うときだけ、Python環境を用意します。
@@ -259,7 +276,7 @@ Py-Feat v2 APIを使うときだけ、Python環境を用意します。
 ~~~powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r emotion-api\requirements.txt
+pip install -c emotion-api\constraints.txt -r emotion-api\requirements.txt
 $env:ALLOWED_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
 python -m uvicorn app:app --app-dir emotion-api --host 127.0.0.1 --port 8000
 ~~~
@@ -327,9 +344,10 @@ frontend/.env.localまたはデプロイ環境に設定します。
 | ALLOW_ANONYMOUS | trueはローカル検証用。本番はfalse |
 | SUPABASE_URL | Supabase Project URL |
 | SUPABASE_SECRET_KEY | バックエンド専用のSecret key |
-| STATUS_TTL | 自動認識状態の有効期間。0は無期限、最大24時間。手動状態は常に無期限 |
+| REDIS_URL | Pod間イベント中継用Redis URL。未設定なら単一PodのローカルHubのみ |
+| STATUS_TTL | 自動認識状態の有効期間。0は無期限、最大24時間。通常のフロント手動状態は互換性のため無期限 |
 
-STATUS_TTLの既定値は15mです。自動認識状態が期限切れになると現在状態を返さず、画面側は初期状態（反応可能）に戻ります。手動ボタンで設定した状態は期限切れになりません。PC側の公開接続が切れた場合は、5秒の再接続猶予後に、その接続が公開していた状態だけを削除して表示側を初期状態へ戻します。render.yamlは15mを設定しています。
+STATUS_TTLの既定値は15mです。自動認識状態が期限切れになると現在状態を返さず、画面側は初期状態（反応可能）に戻ります。IoTから送る手動状態は `leaseSeconds` を付け、Heartbeatが止まると期限切れになります。期限切れ・切断時には `status.cleared` を配信します。PC側の公開接続が切れた場合は、5秒の再接続猶予後に、切断時点と同じ状態だけを条件付き削除します。render.yamlは15mを設定しています。
 
 ## Go API
 
@@ -351,6 +369,15 @@ GET  /api/v1/ws
 3. 認証成功後にserver.readyを返す
 4. PC側がrecognition.updateを送信
 5. バックエンドが現在状態を保存し、同じルームへstatus.changedを配信
+
+IoTのLease更新には次のメッセージを使います。
+
+~~~json
+{"type":"recognition.update","sequence":1,"capturedAt":"2026-01-01T00:00:00Z","status":"busy","source":"manual","leaseSeconds":30}
+{"type":"status.heartbeat","leaseSeconds":30}
+~~~
+
+`status.heartbeat` は、同じclientIdが持つ手動状態だけを延長します。期限が切れた後のHeartbeatは `state_expired` になり、IoT側は次の操作で新しい状態を送ります。
 6. スマホや別クライアントが表示を更新
 
 ~~~

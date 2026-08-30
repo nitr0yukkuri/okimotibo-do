@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/domain"
 )
 
 func TestSupabasePairingPersistsAndClaimsOnce(t *testing.T) {
@@ -103,5 +105,57 @@ func TestSupabaseClearStateFiltersByClient(t *testing.T) {
 	cleared, err := repository.ClearState(context.Background(), "room-1", "user-1", "client-1")
 	if err != nil || !cleared {
 		t.Fatalf("expected Supabase state to be cleared: cleared=%v err=%v", cleared, err)
+	}
+}
+
+func TestSupabaseConditionalClearFiltersVersion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/v1/current_statuses" || r.Method != http.MethodDelete {
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
+		query := r.URL.Query()
+		if query.Get("client_id") != "eq.client-1" || query.Get("sequence") != "eq.7" || query.Get("received_at") != "eq.2026-08-30T00:00:00Z" {
+			t.Errorf("conditional clear filters are missing: %s", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"room_id":"room-1"}]`))
+	}))
+	defer server.Close()
+
+	repository := NewSupabase(server.URL, "service-key", time.Second)
+	cleared, err := repository.ClearStateIfCurrent(context.Background(), "room-1", "user-1", "client-1", 7, time.Date(2026, time.August, 30, 0, 0, 0, 0, time.UTC))
+	if err != nil || !cleared {
+		t.Fatalf("expected conditional Supabase clear: cleared=%v err=%v", cleared, err)
+	}
+}
+
+func TestSupabaseConditionalLeaseRefreshFiltersVersion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/v1/current_statuses" || r.Method != http.MethodPatch {
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
+		query := r.URL.Query()
+		if query.Get("client_id") != "eq.client-1" || query.Get("sequence") != "eq.7" || query.Get("received_at") != "eq.2026-08-30T00:00:00Z" || query.Get("source") != "eq.manual" {
+			t.Errorf("conditional lease filters are missing: %s", r.URL.RawQuery)
+		}
+		var payload map[string]time.Time
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["received_at"].IsZero() || payload["expires_at"].IsZero() {
+			t.Fatalf("lease timestamps are missing: %#v", payload)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"room_id":"room-1"}]`))
+	}))
+	defer server.Close()
+
+	repository := NewSupabase(server.URL, "service-key", time.Second)
+	current := domain.State{RoomID: "room-1", UserID: "user-1", ClientID: "client-1", Sequence: 7, ReceivedAt: time.Date(2026, time.August, 30, 0, 0, 0, 0, time.UTC), Source: domain.SourceManual}
+	refreshed, err := repository.RefreshManualLeaseIfCurrent(context.Background(), current, time.Date(2026, time.August, 30, 0, 0, 1, 0, time.UTC), time.Date(2026, time.August, 30, 0, 0, 1, 0, time.UTC), time.Date(2026, time.August, 30, 0, 1, 1, 0, time.UTC))
+	if err != nil || !refreshed {
+		t.Fatalf("expected conditional Supabase lease refresh: refreshed=%v err=%v", refreshed, err)
 	}
 }

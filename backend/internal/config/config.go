@@ -13,6 +13,7 @@ type Config struct {
 	AllowAnonymous    bool
 	SupabaseURL       string
 	SupabaseSecretKey string
+	RedisURL          string
 	HTTPTimeout       time.Duration
 	StatusTTL         time.Duration
 }
@@ -28,6 +29,7 @@ func FromEnv() (Config, error) {
 		AllowAnonymous:    strings.EqualFold(os.Getenv("ALLOW_ANONYMOUS"), "true"),
 		SupabaseURL:       strings.TrimRight(os.Getenv("SUPABASE_URL"), "/"),
 		SupabaseSecretKey: os.Getenv("SUPABASE_SECRET_KEY"),
+		RedisURL:          strings.TrimSpace(os.Getenv("REDIS_URL")),
 		HTTPTimeout:       5 * time.Second,
 		StatusTTL:         statusTTL,
 	}
