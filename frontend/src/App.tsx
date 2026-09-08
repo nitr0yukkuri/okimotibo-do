@@ -2,7 +2,6 @@ import { useRef, useState, useEffect, type MouseEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import "./App.css";
 import { useStateRecognition } from "./use-state-recognition";
-import type { RecognitionResult } from "./types";
 import { StatusDisplay } from "./StatusDisplay";
 import { StatusPictureInPicture } from "./StatusPictureInPicture";
 import { CameraPreviewModal } from "./CameraPreviewModal";
@@ -113,15 +112,10 @@ function ControlPanel({
     setSelectedMood(syncedMood);
   }, [syncedMood]);
 
-  const updateFromRecognition = (result: RecognitionResult) => {
-    if (result.status !== "unknown") {
-      setSelectedMood(result.status);
-    }
-  };
-
-  // ボタン操作は画面表示をすぐ切り替えつつ、サーバーにも送って他端末へ配信する。
+  // 表示はサーバーから返ったstatus.changedだけで更新する。
+  // 送信前に画面を切り替えると、手動状態の優先判定や保存失敗時に
+  // PCだけが別の状態を表示してしまうため、楽観更新は行わない。
   const handleManualMoodChange = (mood: Mood) => {
-    setSelectedMood(mood);
     sendManual(mood);
   };
 
@@ -135,7 +129,6 @@ function ControlPanel({
       enabled: autoRead,
     },
     socket: cameraSocket,
-    onRecognition: updateFromRecognition,
   });
 
   useEffect(() => {
