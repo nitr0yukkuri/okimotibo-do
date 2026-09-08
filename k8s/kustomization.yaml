@@ -2,12 +2,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: okimochi
 resources:
-  - namespace.yaml
+  - base
   - redis-service.yaml
   - redis-deployment.yaml
-  - backend-configmap.yaml
-  - backend-service.yaml
-  - backend-deployment.yaml
-  - emotion-api-configmap.yaml
-  - emotion-api-service.yaml
-  - emotion-api-deployment.yaml

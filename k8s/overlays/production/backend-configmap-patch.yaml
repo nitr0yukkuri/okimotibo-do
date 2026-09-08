@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: okimochi-backend-config
+data:
+  ALLOWED_ORIGINS: "https://frontend.example.com"
+  ALLOW_ANONYMOUS: "false"
+  # REDIS_URL is supplied by the external secret in this overlay.
+  REDIS_URL: null
