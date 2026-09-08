@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/application"
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/config"
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/domain"
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/store"
@@ -24,15 +25,11 @@ const maxMessageBytes = 16 << 10
 
 const disconnectGrace = 5 * time.Second
 
-const (
-	defaultManualLease = 30 * time.Second
-	minManualLease     = 1 * time.Second
-	maxManualLease     = 24 * time.Hour
-)
-
 type Server struct {
 	cfg     config.Config
 	store   store.Repository
+	status  *application.StatusService
+	expiry  *application.ExpiryScheduler
 	hub     *hub
 	pairing store.PairingRepository
 	logger  *slog.Logger
@@ -48,6 +45,8 @@ type client struct {
 	roomID, userID, clientID string
 	readOnly                 bool
 	send                     chan []byte
+	bootstrapping            bool
+	pending                  [][]byte
 	cancel                   context.CancelFunc
 	lastSequence             uint64
 }
@@ -63,7 +62,21 @@ func NewServer(cfg config.Config, repository store.Repository, logger *slog.Logg
 		hostname = "backend"
 	}
 	origin := fmt.Sprintf("%s-%d", hostname, time.Now().UnixNano())
-	server := &Server{cfg: cfg, store: repository, hub: newHub(), pairing: pairing, logger: logger, lifeCtx: lifeCtx, stop: stop, origin: origin}
+	server := &Server{
+		cfg: cfg, store: repository,
+		status: application.NewStatusService(repository, func(err error) bool { return errors.Is(err, store.ErrNotFound) }),
+		hub:    newHub(), pairing: pairing, logger: logger, lifeCtx: lifeCtx, stop: stop, origin: origin,
+	}
+	server.expiry = application.NewExpiryScheduler(lifeCtx, server.status,
+		func(transition domain.Transition) {
+			if transition.Previous != nil {
+				server.broadcastCleared(*transition.Previous)
+			}
+		},
+		func(err error, state domain.State) {
+			logger.Warn("failed to clear expired status", "error", err, "roomId", state.RoomID, "userId", state.UserID)
+		},
+	)
 	if cfg.RedisURL != "" {
 		bus, err := newRedisBus(cfg.RedisURL, origin, logger)
 		if err != nil {
@@ -77,26 +90,6 @@ func NewServer(cfg config.Config, repository store.Repository, logger *slog.Logg
 	return server
 }
 
-func statusExpiresAt(now time.Time, ttl time.Duration, source domain.Source) time.Time {
-	if source == domain.SourceManual || ttl <= 0 {
-		return time.Date(9999, time.December, 31, 23, 59, 59, 999999999, time.UTC)
-	}
-	return now.Add(ttl)
-}
-
-func statusExpiresAtWithLease(now time.Time, ttl time.Duration, source domain.Source, leaseSeconds *int) (time.Time, error) {
-	if leaseSeconds == nil {
-		return statusExpiresAt(now, ttl, source), nil
-	}
-	if source != domain.SourceManual {
-		return time.Time{}, errors.New("leaseSeconds is only supported for manual status")
-	}
-	if *leaseSeconds < int(minManualLease/time.Second) || *leaseSeconds > int(maxManualLease/time.Second) {
-		return time.Time{}, errors.New("leaseSeconds must be between 1 and 86400")
-	}
-	lease := time.Duration(*leaseSeconds) * time.Second
-	return now.Add(lease), nil
-}
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -118,6 +111,7 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) Close() {
 	s.ready.Store(false)
+	s.expiry.Close()
 	s.stop()
 	s.hub.close()
 	if s.bus != nil {
@@ -221,8 +215,20 @@ func (s *Server) websocket(w http.ResponseWriter, r *http.Request) {
 	}
 	c.roomID, c.userID, c.clientID, c.readOnly = hello.RoomID, userID, hello.ClientID, readOnly
 	s.hub.add(c)
-	ack, _ := json.Marshal(outgoingMessage{Type: "server.ready"})
-	c.send <- ack
+	// 再接続直後にstatus.changedを取りこぼしても表示を復元できるよう、
+	// 接続ユーザー自身の現在状態をreadyメッセージに同梱する。
+	ready := outgoingMessage{Type: "server.ready", UserID: c.userID}
+	if state, stateErr := s.status.GetCurrent(ctx, c.roomID, c.userID); stateErr == nil {
+		ready.State = &state
+		s.scheduleStateExpiry(state)
+	} else if !errors.Is(stateErr, application.ErrStateNotFound) {
+		s.logger.Warn("failed to load initial status", "error", stateErr, "roomId", c.roomID, "userId", c.userID)
+	}
+	ack, _ := json.Marshal(ready)
+	if !s.hub.finishBootstrap(c, ack) {
+		c.cancel()
+		return
+	}
 
 	go s.writeLoop(ctx, c)
 	s.readLoop(ctx, c)
@@ -261,23 +267,24 @@ func (s *Server) readLoop(ctx context.Context, c *client) {
 			continue
 		}
 		now := time.Now().UTC()
-		expiresAt, expiryErr := statusExpiresAtWithLease(now, s.cfg.StatusTTL, incoming.Source, incoming.LeaseSeconds)
+		expiresAt, expiryErr := application.StatusExpiresAtWithLease(now, s.cfg.StatusTTL, incoming.Source, incoming.LeaseSeconds)
 		if expiryErr != nil {
 			s.sendError(c, "validation_failed", expiryErr.Error())
 			continue
 		}
 		state := domain.State{RoomID: c.roomID, UserID: c.userID, ClientID: c.clientID, Sequence: incoming.Sequence,
 			CapturedAt: incoming.CapturedAt, ReceivedAt: now, ExpiresAt: expiresAt, Status: incoming.Status, Hand: incoming.Hand, Face: incoming.Face, Source: incoming.Source}
-		if err := state.Validate(now); err != nil {
-			s.sendError(c, "validation_failed", err.Error())
-			continue
-		}
 		if state.Sequence <= c.lastSequence {
 			s.sendError(c, "stale_sequence", "sequence must increase")
 			continue
 		}
-		if err := s.store.UpsertState(ctx, state); err != nil {
-			if errors.Is(err, store.ErrStaleState) {
+		transition, err := s.status.ApplyRecognition(ctx, state, now)
+		if err != nil {
+			if errors.Is(err, domain.ErrInvalidState) {
+				s.sendError(c, "validation_failed", err.Error())
+				continue
+			}
+			if errors.Is(err, domain.ErrStaleTransition) || errors.Is(err, domain.ErrManualPriority) || errors.Is(err, store.ErrStaleState) {
 				s.sendError(c, "stale_state", "a newer state is already stored")
 				continue
 			}
@@ -285,6 +292,7 @@ func (s *Server) readLoop(ctx context.Context, c *client) {
 			s.sendError(c, "persistence_failed", "state was not saved")
 			continue
 		}
+		state = *transition.Current
 		c.lastSequence = state.Sequence
 		s.scheduleStateExpiry(state)
 		message, _ := json.Marshal(outgoingMessage{Type: "status.changed", State: &state})
@@ -302,82 +310,41 @@ func (s *Server) handleHeartbeat(ctx context.Context, c *client, data []byte) {
 		s.sendError(c, "invalid_message", "invalid status.heartbeat")
 		return
 	}
-	leaseSeconds := int(defaultManualLease / time.Second)
+	leaseSeconds := int(application.DefaultManualLease / time.Second)
 	if heartbeat.LeaseSeconds != nil {
 		leaseSeconds = *heartbeat.LeaseSeconds
 	}
 	now := time.Now().UTC()
-	expiresAt, err := statusExpiresAtWithLease(now, s.cfg.StatusTTL, domain.SourceManual, &leaseSeconds)
+	_, err := application.StatusExpiresAtWithLease(now, s.cfg.StatusTTL, domain.SourceManual, &leaseSeconds)
 	if err != nil {
 		s.sendError(c, "validation_failed", err.Error())
 		return
 	}
-	current, err := s.store.GetState(ctx, c.roomID, c.userID)
-	if errors.Is(err, store.ErrNotFound) {
-		s.sendError(c, "state_expired", "no active manual lease to refresh")
-		return
-	}
+	transition, err := s.status.RefreshManualLease(ctx, c.roomID, c.userID, c.clientID, now, time.Duration(leaseSeconds)*time.Second)
 	if err != nil {
-		s.sendError(c, "persistence_failed", "state was not loaded")
+		switch {
+		case errors.Is(err, application.ErrStateNotFound), errors.Is(err, domain.ErrLeaseNotActive):
+			s.sendError(c, "state_expired", "no active manual lease to refresh")
+		case errors.Is(err, application.ErrLeaseOwnerMismatch):
+			s.sendError(c, "lease_owner_mismatch", "only the manual state owner can refresh its lease")
+		case errors.Is(err, domain.ErrStaleTransition), errors.Is(err, store.ErrStaleState):
+			s.sendError(c, "stale_state", "a newer state is already stored")
+		case errors.Is(err, application.ErrLeaseRefreshUnsupported):
+			s.logger.Error("manual lease refresh is unsupported by the state store")
+			s.sendError(c, "persistence_failed", "lease refresh is not supported")
+		default:
+			s.sendError(c, "persistence_failed", "lease was not refreshed")
+		}
 		return
 	}
-	if current.ClientID != c.clientID || current.Source != domain.SourceManual {
-		s.sendError(c, "lease_owner_mismatch", "only the manual state owner can refresh its lease")
-		return
-	}
-	refresher, ok := s.store.(store.ConditionalLeaseRefresher)
-	if !ok {
-		s.logger.Error("manual lease refresh is unsupported by the state store")
-		s.sendError(c, "persistence_failed", "lease refresh is not supported")
-		return
-	}
-	refreshed, err := refresher.RefreshManualLeaseIfCurrent(ctx, current, now, now, expiresAt)
-	if err != nil {
-		s.sendError(c, "persistence_failed", "lease was not refreshed")
-		return
-	}
-	if !refreshed {
-		s.sendError(c, "stale_state", "a newer state is already stored")
-		return
-	}
-	current.CapturedAt = now
-	current.ReceivedAt = now
-	current.ExpiresAt = expiresAt
+	current := *transition.Current
 	s.scheduleStateExpiry(current)
 	message, _ := json.Marshal(outgoingMessage{Type: "status.changed", State: &current})
 	s.broadcast(c.roomID, message)
 }
 
 func (s *Server) scheduleStateExpiry(state domain.State) {
-	if state.ExpiresAt.Year() >= 9999 {
-		return
-	}
-	delay := time.Until(state.ExpiresAt)
-	if delay < 0 {
-		delay = 0
-	}
-	time.AfterFunc(delay, func() {
-		if s.lifeCtx.Err() != nil {
-			return
-		}
-		ctx, cancel := context.WithTimeout(s.lifeCtx, 5*time.Second)
-		defer cancel()
-		cleared, err := s.clearStateIfCurrent(ctx, state)
-		if err != nil {
-			s.logger.Warn("failed to clear expired status", "error", err, "roomId", state.RoomID, "userId", state.UserID)
-			return
-		}
-		if cleared {
-			s.broadcastCleared(state)
-		}
-	})
-}
-
-func (s *Server) clearStateIfCurrent(ctx context.Context, state domain.State) (bool, error) {
-	if clearer, ok := s.store.(store.ConditionalClearer); ok {
-		return clearer.ClearStateIfCurrent(ctx, state.RoomID, state.UserID, state.ClientID, state.Sequence, state.ReceivedAt)
-	}
-	return s.store.ClearState(ctx, state.RoomID, state.UserID, state.ClientID)
+	s.expiry.Schedule(state)
 }
 
 func (s *Server) broadcastCleared(state domain.State) {
@@ -393,13 +360,16 @@ func (s *Server) scheduleDisconnectedStateClear(c *client) {
 		return
 	}
 	time.AfterFunc(disconnectGrace, func() {
+		if s.lifeCtx.Err() != nil {
+			return
+		}
 		if s.hub.hasPublisher(c.roomID, c.userID) {
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(s.lifeCtx, 5*time.Second)
 		defer cancel()
-		current, err := s.store.GetState(ctx, c.roomID, c.userID)
-		if errors.Is(err, store.ErrNotFound) {
+		current, err := s.status.GetCurrent(ctx, c.roomID, c.userID)
+		if errors.Is(err, application.ErrStateNotFound) {
 			return
 		}
 		if err != nil {
@@ -415,7 +385,7 @@ func (s *Server) scheduleDisconnectedStateClear(c *client) {
 		// Delete only the state that was current when there were no publishers.
 		// The conditional store operation also compares sequence and receivedAt,
 		// so a newer state from the same client cannot be removed by this timer.
-		cleared, err := s.clearStateIfCurrent(ctx, current)
+		transition, cleared, err := s.status.Clear(ctx, current)
 		if err != nil {
 			s.logger.Warn("failed to clear disconnected status", "error", err, "roomId", c.roomID, "userId", c.userID, "clientId", c.clientID)
 			return
@@ -423,7 +393,9 @@ func (s *Server) scheduleDisconnectedStateClear(c *client) {
 		if !cleared {
 			return
 		}
-		s.broadcastCleared(current)
+		if transition.Previous != nil {
+			s.broadcastCleared(*transition.Previous)
+		}
 	})
 }
 
@@ -491,8 +463,8 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	state, err := s.store.GetState(r.Context(), roomID, userID)
-	if errors.Is(err, store.ErrNotFound) {
+	state, err := s.status.GetCurrent(r.Context(), roomID, userID)
+	if errors.Is(err, application.ErrStateNotFound) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}

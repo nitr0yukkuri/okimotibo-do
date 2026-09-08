@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+var ErrInvalidState = errors.New("invalid state")
+
 type Status string
 
 const (
@@ -51,6 +53,13 @@ type State struct {
 }
 
 func (s State) Validate(now time.Time) error {
+	if err := s.validate(now); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidState, err)
+	}
+	return nil
+}
+
+func (s State) validate(now time.Time) error {
 	if s.Sequence == 0 {
 		return errors.New("sequence must be positive")
 	}
