@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# This overlay is intentionally a production template. Replace the example
+# origin/host and image references in the patch files before applying it.
+namespace: okimochi
+resources:
+  - ../../base
+  - hpa.yaml
+  - pdb.yaml
+  - network-policy.yaml
+  - ingress.yaml
+
+patches:
+  - path: backend-configmap-patch.yaml
+  - path: backend-deployment-patch.yaml
+  - path: emotion-api-configmap-patch.yaml
+  - path: emotion-api-deployment-patch.yaml

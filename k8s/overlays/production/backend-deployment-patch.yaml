@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: okimochi-backend
+spec:
+  replicas: 2
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: okimochi-backend
+      containers:
+        - name: backend
+          image: okimochi-backend:stable
+          envFrom:
+            - configMapRef:
+                name: okimochi-backend-config
+            - secretRef:
+                name: okimochi-backend-secret
+                optional: false

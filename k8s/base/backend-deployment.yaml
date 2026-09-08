@@ -4,6 +4,8 @@ metadata:
   name: okimochi-backend
 spec:
   replicas: 1
+  minReadySeconds: 5
+  revisionHistoryLimit: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -19,6 +21,7 @@ spec:
         app.kubernetes.io/name: okimochi-backend
     spec:
       terminationGracePeriodSeconds: 30
+      automountServiceAccountToken: false
       containers:
         - name: backend
           image: okimochi-backend:dev
@@ -42,6 +45,13 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /healthz
@@ -63,3 +73,5 @@ spec:
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault

@@ -34,7 +34,7 @@ export default defineConfig({
         ws: true,
         configure: (proxy) => {
           proxy.on("proxyReqWs", (request) => {
-            request.setHeader("origin", "http://127.0.0.1:5173");
+          request.setHeader("origin", "http://localhost:5173");
           });
         },
       },
@@ -47,7 +47,7 @@ export default defineConfig({
         ws: true,
         configure: (proxy) => {
           proxy.on("proxyReqWs", (request) => {
-            request.setHeader("origin", "http://127.0.0.1:5173");
+          request.setHeader("origin", "http://localhost:5173");
           });
         },
       },

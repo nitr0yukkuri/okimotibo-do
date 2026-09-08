@@ -7,7 +7,11 @@ export interface StatusSyncOptions {
   token: string;
   roomId: string;
   userId: string;
+  /** Redis Pub/Subなどでイベントを取りこぼしたときの再同期間隔。0以下で無効。 */
+  reconcileIntervalMs?: number;
 }
+
+const DEFAULT_RECONCILE_INTERVAL_MS = 15_000;
 
 function toMood(value: unknown): Mood | undefined {
   return value === "available" || value === "neutral" || value === "busy" ? value : undefined;
@@ -123,6 +127,11 @@ export function useStatusSync(options?: StatusSyncOptions): { status: Mood; send
         receivedAt?: string;
         state?: { userId?: string; status?: string; expiresAt?: string; capturedAt?: string; receivedAt?: string };
       };
+      if (data?.type === "server.ready" && data.state?.userId === options.userId) {
+        syncRevision += 1;
+        applyState(data.state);
+        return;
+      }
       if (data?.type === "status.cleared" && data.userId === options.userId) {
         const clearedVersion = toStateVersion(data);
         if (clearedVersion && latestStateVersion && compareStateVersion(clearedVersion, latestStateVersion) < 0) return;
@@ -137,6 +146,18 @@ export function useStatusSync(options?: StatusSyncOptions): { status: Mood; send
       applyState(data.state);
     });
 
+    // Redis Pub/Subはイベントを再生しないため、WebSocketが切断されていなくても
+    // 別インスタンスで発生した更新を定期的に正本APIから照合する。
+    const reconcileIntervalMs = options.reconcileIntervalMs ?? DEFAULT_RECONCILE_INTERVAL_MS;
+    let reconcileTimer: number | undefined;
+    if (reconcileIntervalMs > 0) {
+      reconcileTimer = window.setInterval(() => {
+        if (!cancelled && document.visibilityState === "visible") {
+          void fetchCurrentStatus();
+        }
+      }, reconcileIntervalMs);
+    }
+
     socket.connect();
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") return;
@@ -149,11 +170,12 @@ export function useStatusSync(options?: StatusSyncOptions): { status: Mood; send
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelled = true;
       clearExpiryTimer();
+      if (reconcileTimer !== undefined) window.clearInterval(reconcileTimer);
       activeFetchController?.abort();
       socket.close();
       socketRef.current = undefined;
     };
-  }, [options?.url, options?.token, options?.roomId, options?.userId]);
+  }, [options?.url, options?.token, options?.roomId, options?.userId, options?.reconcileIntervalMs]);
 
   const sendManual = (mood: Mood) => {
     socketRef.current?.sendManual(mood);

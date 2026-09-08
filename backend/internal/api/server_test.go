@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/application"
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/config"
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/domain"
 	"github.com/NxTEND-THE-HACK/2026-Team-02/backend/internal/store"
@@ -20,10 +21,10 @@ import (
 
 func TestManualStatusDoesNotExpire(t *testing.T) {
 	now := time.Now().UTC()
-	if !statusExpiresAt(now, 15*time.Minute, domain.SourceManual).After(now.Add(24 * time.Hour)) {
+	if !application.StatusExpiresAt(now, 15*time.Minute, domain.SourceManual).After(now.Add(24 * time.Hour)) {
 		t.Fatal("manual status should not expire")
 	}
-	if !statusExpiresAt(now, 15*time.Minute, domain.SourceHand).Before(now.Add(16 * time.Minute)) {
+	if !application.StatusExpiresAt(now, 15*time.Minute, domain.SourceHand).Before(now.Add(16 * time.Minute)) {
 		t.Fatal("automatic status should use configured TTL")
 	}
 }
@@ -162,6 +163,46 @@ func TestWebSocketRecognitionRoundTrip(t *testing.T) {
 	}
 	if _, ok := state["expiresAt"].(string); !ok {
 		t.Fatalf("expiresAt missing from state: %#v", state)
+	}
+}
+
+func TestWebSocketReadyIncludesCurrentUserState(t *testing.T) {
+	repository := store.NewMemory()
+	now := time.Now().UTC()
+	if err := repository.UpsertState(context.Background(), domain.State{
+		RoomID: "room-1", UserID: "user-1", ClientID: "client-1", Sequence: 1,
+		CapturedAt: now, ReceivedAt: now, ExpiresAt: now.Add(time.Minute),
+		Status: domain.StatusBusy, Source: domain.SourceManual,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(config.Config{AllowAnonymous: true, AllowedOrigins: []string{"*"}}, repository, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	testServer := httptest.NewServer(server.Handler())
+	defer testServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(testServer.URL, "http")+"/api/v1/ws", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"client.hello","token":"","roomId":"room-1","clientId":"viewer-1","userId":"user-1"}`)); err != nil {
+		t.Fatal(err)
+	}
+	_, readyBytes, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ready outgoingMessage
+	if err := json.Unmarshal(readyBytes, &ready); err != nil {
+		t.Fatal(err)
+	}
+	if ready.Type != "server.ready" || ready.UserID != "user-1" {
+		t.Fatalf("unexpected ready message: %#v", ready)
+	}
+	if ready.State == nil || ready.State.Status != domain.StatusBusy || ready.State.UserID != "user-1" {
+		t.Fatalf("ready state was not included: %#v", ready.State)
 	}
 }
 
