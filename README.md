@@ -59,7 +59,8 @@ AI認識はブラウザ内のMediaPipeを基本とし、PC側で確定した状�
 - 同じアカウントが同じルームを開くと、PCとスマホで同じ状態を共有
 - PCのカメラ認識と手動ボタンはWebSocketで配信
 - 手動ボタンの状態は無期限に維持し、顔認識より優先。明示的な手ジェスチャーでは変更できる
-- スマホはWebSocketのstatus.changedを受信し、接続時・再接続時・画面復帰時に現在状態を再取得
+- PCの表示もサーバーが保存・配信した状態だけを反映し、保存前の認識結果で先に表示を変えない
+- スマホはWebSocketのstatus.changedを受信し、接続時・再接続時・画面復帰時に現在状態を再取得。表示中は15秒ごとにも現在状態を照合し、Redisイベントの取りこぼしから復旧する
 - 同じユーザーの古い状態が新しい状態を上書きしないよう、sequenceとcapturedAtを検証
 
 バックエンドにはQR／合言葉による一時ペアリングAPIもあります。ペアリングの有効期限は10分、合言葉は1回だけ使用でき、ペアリング先は読み取り専用です。現在の主導線は同一アカウントでのログインです。
@@ -137,7 +138,7 @@ Supabase Auth / Postgres
 
 通常のMediaPipe認識では、カメラ映像・顔画像・全フレームをサーバーへ送りません。WebSocketとSupabaseに保存・配信するのは、状態、ジェスチャー、表情の要約、信頼度、時刻などのメタデータです。
 
-Supabaseのcurrent_statusesには現在状態だけを保存します。status_eventsテーブルは履歴用のスキーマとして存在しますが、現行APIは現在状態の更新を主に行います。
+Supabaseのcurrent_statusesには現在状態を保存し、受理された意味のある状態変更はstatus_eventsへ履歴として記録します。HeartbeatによるLease更新は認識状態を変えないため、履歴イベントにはしません。
 
 Py-Feat v2を明示的に使う場合だけ、縮小JPEGがPython APIへ送信されます。Go APIとSupabaseにはその画像を保存しません。
 
@@ -269,6 +270,28 @@ kubectl apply -f .\k8s\backend-nodeport-service.yaml
 
 M5Stickの `WS_HOST` はkindを動かすPCのLAN IP、`WS_PORT` は30080にします。本番ではNodePortではなく、認証・TLS付きのIngressまたはLoadBalancerで `wss://` を使います。
 
+### 本番相当Kubernetesの構成
+
+`k8s/` は匿名モード・1 Podのkind学習用です。本番へそのまま適用しません。共通マニフェストは `k8s/base/` にまとめ、本番向けの差分は `k8s/overlays/production/` に分けています。
+
+本番overlayでは、BackendとEmotion APIを複数Podにし、HPA、PDB、起動Probe、NetworkPolicy、WebSocket用Ingressを有効にします。一方、ローカルRedisはデータを永続化しないため本番overlayには含めていません。Supabaseなどの共有ストアと、TLS対応のマネージドRedisを先に用意してください。
+
+適用前に、exampleのドメインとイメージ名を実環境へ置き換え、Ingress controllerとMetrics Serverを用意します。SecretはGitへ保存しません。
+
+~~~powershell
+kubectl -n okimochi create secret generic okimochi-backend-secret `
+  --from-literal=SUPABASE_URL="https://your-project.supabase.co" `
+  --from-literal=SUPABASE_SECRET_KEY="your-secret-key" `
+  --from-literal=REDIS_URL="rediss://your-managed-redis:6380"
+
+kubectl kustomize .\k8s\overlays\production
+kubectl apply -k .\k8s\overlays\production
+kubectl -n okimochi rollout status deployment/okimochi-backend
+kubectl -n okimochi get pods,svc,ingress,hpa,pdb,networkpolicy
+~~~
+
+詳細な前提条件は [`k8s/overlays/production/README.md`](k8s/overlays/production/README.md) にあります。
+
 ### 任意のPython表情API
 
 Py-Feat v2 APIを使うときだけ、Python環境を用意します。
@@ -366,7 +389,7 @@ GET  /api/v1/ws
 
 1. クライアントが8秒以内にclient.helloを送信
 2. バックエンドがSupabaseアクセストークン、ルーム所属、または匿名設定を検証
-3. 認証成功後にserver.readyを返す
+3. 認証成功後に、接続ユーザーの現在状態を含むserver.readyを返す（状態がなければstateは省略）
 4. PC側がrecognition.updateを送信
 5. バックエンドが現在状態を保存し、同じルームへstatus.changedを配信
 
@@ -462,6 +485,8 @@ Go APIをCloud Runへ配置することもできます。WebSocketの長時間�
 
 hardware/m5stick/main.inoに、M5StickC Plus2の画面へWebSocketで状態を表示するクライアント試作があります。
 
+写真の端末へArduino IDEから書き込む手順は [`hardware/m5stick/README.md`](hardware/m5stick/README.md) にまとめています。
+
 ~~~
 カメラ／手動操作
   → Go API
@@ -469,7 +494,7 @@ hardware/m5stick/main.inoに、M5StickC Plus2の画面へWebSocketで状態を�
   → M5StickC Plus2の画面
 ~~~
 
-現在のスケッチはローカル検証向けです。Wi-Fi、ホスト、ポート、トークンがソース内のプレースホルダーになっており、TLS付きWebSocketや本番向けの認証設定は別途必要です。M5Stickはアプリの必須構成ではなく、物理表示へ展開するための試作です。
+現在のスケッチはローカル検証向けです。Wi-Fi、ホスト、ポート、トークンがソース内のプレースホルダーになっており、TLS付きWebSocketや本番向けの認証設定は別途必要です。`TARGET_USER_ID` を空にすると、`server.ready` で認証された自分のユーザーだけを表示します。固定する場合も、WebSocketトークンで認証するユーザーIDと一致させてください。手動状態を送信した後は10秒ごとに `status.heartbeat` を送り、30秒Leaseを延長します。M5Stickはアプリの必須構成ではなく、物理表示へ展開するための試作です。
 
 ### 実機なしのIoTシミュレーター
 
@@ -520,6 +545,10 @@ python -m pytest
 
 Py-Featの依存関係を入れていない環境では、emotion-apiのテストは先にPython依存関係をインストールしてください。
 
+### k6 WebSocket負荷試験
+
+カメラを使わず、publisher 1台と複数viewerで、同期バックエンドの接続成功率・状態配信遅延・sequence逆戻り・Heartbeatを確認できます。実行手順とstaging利用時の安全策は [`performance/k6/README.md`](performance/k6/README.md) を参照してください。
+
 ### 手動確認
 
 - 左手・右手、鏡像表示
@@ -530,6 +559,7 @@ Py-Featの依存関係を入れていない環境では、emotion-apiのテス�
 - PCの手動操作がスマホへ反映されること
 - 同一アカウントでの再ログインと状態復元
 - WebSocket切断、再接続、画面復帰
+- WebSocket接続中にRedisイベントを取りこぼした場合の15秒以内の現在状態再同期
 - 異なるルームへ状態が漏れないこと
 - ペアリングコードの10分期限、1回限り、読み取り専用
 
