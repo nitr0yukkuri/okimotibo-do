@@ -79,7 +79,7 @@ func (s State) validate(now time.Time) error {
 		if !validConfidence(s.Hand.Confidence) {
 			return errors.New("hand confidence must be between 0 and 1")
 		}
-		if s.Hand.Gesture != "thumb_up" && s.Hand.Gesture != "sideways_thumb" && s.Hand.Gesture != "shaka" && s.Hand.Gesture != "thumb_down" && s.Hand.Gesture != "unknown" {
+		if s.Hand.Gesture != "thumb_up" && s.Hand.Gesture != "sideways_thumb" && s.Hand.Gesture != "thumb_down" && s.Hand.Gesture != "unknown" {
 			return errors.New("invalid hand gesture")
 		}
 		if s.Hand.Handedness != "" && s.Hand.Handedness != "Left" && s.Hand.Handedness != "Right" {
@@ -110,7 +110,7 @@ func (s State) validateSource() error {
 		if s.Hand == nil || s.Hand.Gesture == "unknown" {
 			return errors.New("hand source requires a recognized hand gesture")
 		}
-		expected := map[string]Status{"thumb_up": StatusAvailable, "sideways_thumb": StatusNeutral, "shaka": StatusNeutral, "thumb_down": StatusBusy}[s.Hand.Gesture]
+		expected := map[string]Status{"thumb_up": StatusAvailable, "sideways_thumb": StatusNeutral, "thumb_down": StatusBusy}[s.Hand.Gesture]
 		if s.Status != expected {
 			return fmt.Errorf("status does not match hand gesture %q", s.Hand.Gesture)
 		}

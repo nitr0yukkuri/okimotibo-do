@@ -18,6 +18,7 @@ func TestStateValidate(t *testing.T) {
 		{Sequence: 1, CapturedAt: now, Status: "invalid", Source: SourceNone},
 		{Sequence: 1, CapturedAt: now, Status: StatusAvailable, Source: SourceHand, Hand: &Hand{Gesture: "thumb_up", Confidence: 1.1}},
 		{Sequence: 1, CapturedAt: now, Status: StatusBusy, Source: SourceHand, Hand: &Hand{Gesture: "thumb_up", Confidence: .9}},
+		{Sequence: 1, CapturedAt: now, Status: StatusNeutral, Source: SourceHand, Hand: &Hand{Gesture: "shaka", Confidence: .9}},
 	}
 	for i, state := range tests {
 		if err := state.Validate(now); err == nil {
