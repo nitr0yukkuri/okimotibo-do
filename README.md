@@ -29,7 +29,6 @@ AI認識はブラウザ内のMediaPipeを基本とし、PC側で確定した状�
 |---|---|---|---|
 | 親指を上 | thumb_up | available | したい／ひま！ |
 | 横向きの親指 | sideways_thumb | neutral | いいよ／反応可能 |
-| 親指と小指 | shaka | neutral | いいよ／反応可能 |
 | 親指を下 | thumb_down | busy | したくない／作業中 |
 | 笑顔（補助） | smile | available | したい |
 | 集中傾向（補助） | frown | busy | したくない |
@@ -80,7 +79,6 @@ AI認識はブラウザ内のMediaPipeを基本とし、PC側で確定した状�
 ブラウザ内のMediaPipe Gesture Recognizerと、21点の手ランドマークを使うカスタム分類を組み合わせています。
 
 - thumb_up／thumb_downはMediaPipeの標準分類を利用
-- shakaは親指・人差し指・中指・薬指・小指の開閉をランドマークから判定
 - sideways_thumbは親指の方向をランドマークから判定
 - 握りこぶしは状態更新から除外
 - 推論間隔は標準100ms（約10 FPS）
@@ -582,7 +580,7 @@ Py-Featの依存関係を入れていない環境では、emotion-apiのテス�
 ### 手動確認
 
 - 左手・右手、鏡像表示
-- 親指を上・横・下、shaka、握りこぶし
+- 親指を上・横・下、握りこぶし
 - カメラの向きや手首の角度
 - 顔だけ、手だけ、両方未検出
 - 手の認識後に顔がすぐ上書きしないこと
