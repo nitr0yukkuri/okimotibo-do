@@ -22,6 +22,7 @@ export interface GestureClassification {
   gesture: Gesture;
   confidence: number;
   isFist?: boolean;
+  isUnsupported?: boolean;
 }
 
 function distance(a: Landmark, b: Landmark): number {
@@ -36,13 +37,7 @@ function angle(a: Landmark, b: Landmark, c: Landmark): number {
   return Math.acos(Math.max(-1, Math.min(1, dot / Math.max(magnitude, 1e-9))));
 }
 
-// 閾値を2.3に統一: isExtended(>2.3) と isFolded(<=2.3) でグレーゾーンをなくす
-function isExtended(points: Landmark[], mcp: number, pip: number, tip: number): boolean {
-  const straight = angle(points[mcp], points[pip], points[tip]) > 2.3;
-  const palmDistance = distance(points[tip], points[WRIST]);
-  return straight && palmDistance > distance(points[pip], points[WRIST]) * 1.08;
-}
-
+// 閾値を2.3に統一してグレーゾーンをなくす。
 function isFolded(points: Landmark[], mcp: number, pip: number, tip: number): boolean {
   return (
     angle(points[mcp], points[pip], points[tip]) <= 2.3 ||
@@ -68,10 +63,12 @@ export function classifyLandmarks(points: Landmark[]): GestureClassification {
   const middleFolded = isFolded(points, MIDDLE_MCP, MIDDLE_PIP, MIDDLE_TIP);
   const ringFolded = isFolded(points, RING_MCP, RING_PIP, RING_TIP);
   const pinkyFolded = isFolded(points, PINKY_MCP, PINKY_PIP, PINKY_TIP);
-  const pinkyExtended = isExtended(points, PINKY_MCP, PINKY_PIP, PINKY_TIP);
 
+  // 🤙は対応ジェスチャーに含めない。MediaPipeがthumb_upと誤認しても
+  // この入力を状態更新へ流さないため、明示的に無視する。
+  const pinkyExtended = !pinkyFolded;
   if (thumb && indexFolded && middleFolded && ringFolded && pinkyExtended) {
-    return { gesture: "shaka", confidence: 0.88 };
+    return { gesture: "unknown", confidence: 0, isUnsupported: true };
   }
 
   if (indexFolded && middleFolded && ringFolded && pinkyFolded && thumbIsNearPalm(points, scale)) {

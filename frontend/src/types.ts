@@ -1,4 +1,4 @@
-export type Gesture = "thumb_up" | "sideways_thumb" | "shaka" | "thumb_down" | "unknown";
+export type Gesture = "thumb_up" | "sideways_thumb" | "thumb_down" | "unknown";
 export type Status = "available" | "neutral" | "busy" | "unknown";
 export type Expression = "smile" | "frown" | "surprised" | "neutral" | "unknown";
 export type RecognitionSource = "hand" | "face" | "none";
@@ -38,7 +38,6 @@ export interface RecognitionResult {
 export const GESTURE_STATUS: Record<Gesture, Status> = {
   thumb_up: "available",
   sideways_thumb: "neutral",
-  shaka: "neutral",
   thumb_down: "busy",
   unknown: "unknown",
 };

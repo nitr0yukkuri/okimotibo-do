@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyLandmarks, normalizeMediaPipeGesture } from "./gesture-classifier";
 import type { Landmark } from "./types";
 
-function pose(thumb: "up" | "down" | "sideways", extendPinky: boolean): Landmark[] {
+function pose(thumb: "up" | "down" | "sideways", extendPinky = false): Landmark[] {
   const points = Array.from({ length: 21 }, () => ({ x: 0, y: 0.6, z: 0 }));
   points[0] = { x: 0, y: 1, z: 0 };
   if (thumb === "sideways") {
@@ -70,10 +70,17 @@ describe("gesture classifier", () => {
   it.each([
     ["thumb_up", pose("up", false)],
     ["sideways_thumb", pose("sideways", false)],
-    ["shaka", pose("up", true)],
     ["thumb_down", pose("down", false)],
   ] as const)("recognizes %s from hand geometry", (expected, landmarks) => {
     expect(classifyLandmarks(landmarks).gesture).toBe(expected);
+  });
+
+  it("ignores the shaka gesture", () => {
+    expect(classifyLandmarks(pose("up", true))).toMatchObject({
+      gesture: "unknown",
+      confidence: 0,
+      isUnsupported: true,
+    });
   });
 
   it("keeps a sideways thumb when the camera image is mirrored", () => {
