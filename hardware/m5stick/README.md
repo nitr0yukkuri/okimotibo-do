@@ -1,10 +1,11 @@
-# M5StickC をおきもちぼーどにつなぐ
+# M5StickC Plus2をおきもちぼーどにつなぐ
 
-写真のオレンジ色の端末は **M5StickC** です。実機のUSBチップはFTDI、フラッシュは4MBでした。
-`main.ino` はこの端末を、
+写真のオレンジ色の端末は **M5StickC Plus2** です。`main.ino` はこの端末を、
 おきもちぼーどの状態表示・状態変更リモコンとして使うスケッチです。
 
-- 画面に `OKIMOCHI` と現在状態を表示
+- 画面に状態を色付きの丸で表示
+- 緑=available（話しかけてOK／暇）、黄色=neutral（対応可能）、赤=busy（作業中）
+- 灰色=unknown／offline／TCPまたはWebSocket未接続
 - Aボタンを0.8秒長押しすると `busy` / `available` を切り替え
 - Wi-Fi経由でBackendへWebSocket送信
 - 手動状態は30秒Leaseで保持し、10秒ごとにHeartbeatで延長
@@ -16,9 +17,9 @@ M5Stack公式の [StickC Arduino手順](https://docs.m5stack.com/en/arduino/m5st
 
 1. Arduino IDEをインストールする
 2. ボードマネージャーでESP32のボード定義を入れる
-3. ボードに `M5StickC` を選ぶ
+3. ボードに `M5StickCPlus2` を選ぶ
 4. ライブラリマネージャーで次を入れる
-   - `M5StickC`
+   - `M5StickC`（スケッチが `M5StickC.h` を使用）
    - `WebSockets`（arduinoWebSockets / Markus Sattler）
    - `ArduinoJson`
 5. Windowsで端末が `USB Serial Port` として認識されない場合は、FTDIのUSBドライバを入れる
@@ -77,15 +78,15 @@ PCで `go run ./cmd/server` を使う場合のポートは `8080` です。
 
 端末をUSBで接続し、Arduino IDEで次を選びます。
 
-1. `ツール` → `ボード` → `M5StickCPlus`
+1. `ツール` → `ボード` → `M5StickCPlus2`
 2. `ツール` → `ポート` → `COM番号`
 3. 上向き矢印の「書き込み」を押す
 
 COM番号は、Windowsの「デバイス マネージャー」→「ポート (COMとLPT)」で確認できます。
 `USB Serial Port (COMx)` と表示され、FTDIのVID/PIDが `0403:6001` なら認識できています。
 
-書き込み後、画面に `OKIMOCHI` が表示されます。しばらくするとWi-Fi接続状態が表示され、
-接続できれば `connected` になります。
+書き込み後、通常は状態を色付きの丸で表示します。Wi-Fi接続に失敗した場合だけ、
+`Wi-Fi offline` と `SSID not found` / `auth failed` などの診断文字を表示します。
 
 ## 5. 動作確認
 
@@ -96,6 +97,17 @@ COM番号は、Windowsの「デバイス マネージャー」→「ポート (C
 
 `offline` のままなら、Wi-Fi名・パスワード、`WS_HOST`、Backendのポート、Windows Defender
 ファイアウォール、M5StickとPCが同じネットワークにいるかを確認します。
+
+画面表示による切り分け:
+
+| 表示 | 意味 | 確認すること |
+|---|---|---|
+| `Wi-Fi offline` / `SSID not found` | Wi-Fiに接続できていない | SSID、パスワード、2.4GHz帯、電波 |
+| 灰色の丸 / `tcp fail` | PCのBackendポートへ届かない | `WS_HOST`、`WS_PORT`、ファイアウォール |
+| 灰色の丸 / `ws fail` | TCP後のWebSocket接続に失敗 | Backend、`/api/v1/ws`、認証設定 |
+| 灰色の丸 / `unknown` | 接続済みだが対象状態が未受信 | PCまたはM5Stickから状態を1回送信 |
+
+`WS_HOST` に `localhost` や `127.0.0.1` は設定しません。M5Stick自身ではなく、Backendを起動しているPCのLAN IPを指定します。スマホのテザリングを使う場合も、M5Stickから見えるPC側のIPを使い、PCのファイアウォールでBackendのTCPポートを許可してください。
 
 ## 参考
 
