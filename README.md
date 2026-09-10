@@ -22,6 +22,7 @@ AI認識はブラウザ内のMediaPipeを基本とし、PC側で確定した状�
 5. 状態はWebSocketの切断・再接続や画面復帰時にも、現在値APIから再取得する。
 
 ログイン済みユーザーはSupabaseのroom_membersから所属ルームを取得します。スマホ画面は現在、表示専用です。スマホから状態を変更する操作は持たせず、PC側のカメラ認識または手動ボタンを状態の主な入力にしています。
+
 ## 状態の定義
 
 | 入力 | ジェスチャー／表情 | APIの状態 | 画面上の意味 |
@@ -53,6 +54,13 @@ AI認識はブラウザ内のMediaPipeを基本とし、PC側で確定した状�
 - PCから届いた状態を背景色・アイコン・文言で表示
 - PWAとしてホーム画面へ追加可能
 - スマホ側のカメラや画像は使用しない
+
+### M5StickC Plus2表示
+
+- `available` は緑、`neutral` は黄色、`busy` は赤の丸で表示
+- `unknown`、`offline`、`tcp fail`、`ws fail` は灰色の丸で表示
+- Wi-Fi接続そのものに失敗した場合だけ、画面に `SSID not found` や `auth failed` などの診断文字を表示
+- Aボタンを0.8秒長押しすると、`busy` と `available` を切り替えて送信
 
 ### 同期
 
@@ -119,7 +127,8 @@ Go HTTP / WebSocket API
   ├─ 認証・ルーム権限確認
   ├─ sequence・時刻・信頼度の検証
   ├─ 現在状態の永続化
-  └─ 同じルームへの status.changed 配信
+  ├─ 同じルームへの status.changed 配信
+  └─ Redis Pub/Sub（複数Pod間の通知。任意）
        ├─ スマホ表示画面
        ├─ PCの別ウィンドウ
        └─ M5Stick試作クライアント
@@ -128,7 +137,11 @@ Supabase Auth / Postgres
   ├─ rooms
   ├─ room_members
   ├─ current_statuses
+  ├─ status_events
   └─ pairing_grants
+
+Redis Pub/Sub
+  └─ 複数Backend Pod間の status.changed 通知
 
 任意のデモ経路:
   ブラウザ画像 → Python / Py-Feat v2 API
@@ -441,6 +454,7 @@ WebSocketは25秒ごとにpingを送り、フロントエンドは切断時に�
 2. supabase/migrations/002_manual_recognition_source.sql
 3. supabase/migrations/003_pairing_grants.sql
 4. supabase/migrations/004_manual_priority_and_expiry.sql
+5. supabase/migrations/005_record_status_events.sql
 
 主なテーブル:
 
@@ -496,6 +510,17 @@ hardware/m5stick/main.inoに、M5StickC Plus2の画面へWebSocketで状態を�
 
 現在のスケッチはローカル検証向けです。Wi-Fi、ホスト、ポート、トークンがソース内のプレースホルダーになっており、TLS付きWebSocketや本番向けの認証設定は別途必要です。`TARGET_USER_ID` を空にすると、`server.ready` で認証された自分のユーザーだけを表示します。固定する場合も、WebSocketトークンで認証するユーザーIDと一致させてください。手動状態を送信した後は10秒ごとに `status.heartbeat` を送り、30秒Leaseを延長します。M5Stickはアプリの必須構成ではなく、物理表示へ展開するための試作です。
 
+画面は通常、状態名ではなく色付きの丸だけを表示します。緑は `available`（話しかけてOK／暇）、黄色は `neutral`（対応可能）、赤は `busy`（作業中）、灰色は未接続または状態未確定です。Wi-Fiに接続できない場合は、原因確認のため一時的に `SSID not found`、`auth failed`、`disconnected` などの文字を表示します。
+
+接続状態を切り分けるときは、次の順に確認します。
+
+1. `Wi-Fi offline` / `SSID not found`: SSIDの綴り、パスワード、2.4GHz帯、端末とアクセスポイントの距離を確認する。
+2. Wi-Fi接続後に `tcp fail`: `WS_HOST` がBackendを起動しているPCのLAN IPか、`WS_PORT` が実際の待受ポートか、WindowsファイアウォールがTCPポートを許可しているかを確認する。
+3. `ws fail`: BackendのWebSocketパスが `/api/v1/ws` か、Backendが起動中か、認証設定（匿名なら空トークン、Supabaseならアクセストークン）が一致しているかを確認する。
+4. `unknown`: WebSocket接続はできているが、対象ユーザーの現在状態がまだ届いていない。PCまたはM5Stickで状態を1回送信し、`server.ready` 後の状態配信を確認する。
+
+`WS_HOST` に `localhost` や `127.0.0.1` を設定してはいけません。M5Stick自身を指してしまうため、Backendを起動しているPCのLAN IPを設定します。スマホのテザリング経由で接続する場合も、M5Stickから見えるPC側のアドレスを使い、PCのファイアウォールでBackendのポートを許可してください。
+
 ### 実機なしのIoTシミュレーター
 
 実機がない場合は、Backendに付属する開発用シミュレーターでM5Stickの通信を再現できます。シミュレーターはフロントエンドを経由せず、M5Stickと同じWebSocketメッセージをBackendへ送信します。
@@ -538,8 +563,13 @@ npm run build
 
 cd backend
 go test ./...
+go vet ./...
 
-cd ../emotion-api
+cd ..
+kubectl kustomize k8s
+kubectl kustomize k8s/overlays/production
+
+cd emotion-api
 python -m pytest
 ~~~
 
@@ -572,5 +602,4 @@ Py-Featの依存関係を入れていない環境では、emotion-apiのテス�
 - Py-Feat v2は任意経路で、通常のApp画面では使わない
 - PWAとDocument Picture-in-Pictureの対応状況はブラウザに依存する
 - M5Stickクライアントはローカル試作で、本番のTLS・認証・OTA更新までは整備していない
-~~
 
