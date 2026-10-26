@@ -533,56 +533,6 @@ Simulator commands:
 
 If a status is sent while disconnected, only the latest one is queued and sent on reconnect. For an environment using Supabase authentication, pass an access token with `-token`. Do not embed production secrets in the simulator or M5Stick.
 
-## Production-like Kubernetes setup
-
-### Optional Python expression API
-
-Use a Python environment only when you need the Py-Feat v2 API:
-
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -c emotion-api\constraints.txt -r emotion-api\requirements.txt
-$env:ALLOWED_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
-python -m uvicorn app:app --app-dir emotion-api --host 127.0.0.1 --port 8000
-```
-
-Health check:
-
-```text
-GET http://127.0.0.1:8000/healthz
-```
-
-To use this API from the frontend, explicitly pass `emotion.url` to `useStateRecognition`. The normal App screen does not pass this option.
-
-## Frontend library use
-
-To use the recognition and synchronization library without the UI, pass a video element:
-
-```tsx
-import { useRef } from "react";
-import { useStateRecognition } from "@okimochi/recognition-client";
-
-export function CameraRuntime() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useStateRecognition(videoRef, {
-    face: { enabled: true },
-    socket: {
-      url: "ws://localhost:8080/api/v1/ws",
-      token: "SUPABASE_ACCESS_TOKEN",
-      roomId: "ROOM_UUID",
-      clientId: crypto.randomUUID(),
-      userId: "USER_UUID"
-    }
-  });
-
-  return <video ref={videoRef} hidden />;
-}
-```
-
-In production, you can also serve WASM and MediaPipe models from the same origin. The current default URLs use a CDN.
-
 ## Tests
 
 ### Automated tests
