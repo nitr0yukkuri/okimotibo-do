@@ -472,7 +472,7 @@ Deploy to static hosting such as Vercel with these settings:
 - `VITE_WS_URL`
 - `VITE_PUBLIC_APP_URL`
 
-Use a TLS-enabled `wss://` URL for `VITE_WS_URL) in production.
+Use a TLS-enabled `wss://` URL for `VITE_WS_URL` in production.
 
 ### Go API and Py-Feat API
 
